@@ -5,12 +5,13 @@ from __future__ import print_function
 import numpy as np
 
 from openmdao.api import Group, ParallelGroup, Problem, IndepVarComp, \
-    LinearGaussSeidel
+    LinearGaussSeidel, Component
 from openmdao.core.mpi_wrap import MPI
 from openmdao.test.mpi_util import MPITestCase
 from openmdao.test.simple_comps import FanOutGrouped, FanInGrouped, FanOut3Grouped
 from openmdao.test.exec_comp_for_test import ExecComp4Test
 from openmdao.test.util import assert_rel_error
+from openmdao.util.array_util import evenly_distrib_idxs
 
 if MPI:
     from openmdao.core.petsc_impl import PetscImpl as impl
@@ -379,6 +380,91 @@ class MatMatIndicesTestCase(MPITestCase):
         assert_rel_error(self, J['c4.y']['p.x'][0], np.array([8., 0.]), 1e-6)
 
 
+class DistComp(Component):
+    """Uses 2 procs and has output var slices"""
+    def __init__(self, arr_size=4):
+        super(DistComp, self).__init__()
+        self.arr_size = arr_size
+        self.add_param('invec', np.ones(arr_size, float))
+        self.add_output('outvec', np.ones(arr_size, float))
+
+    def solve_nonlinear(self, params, unknowns, resids):
+
+        p1 = params['invec'][0]
+        p2 = params['invec'][1]
+
+        unknowns['outvec'][0] = p1**2 - 11.0*p2
+        unknowns['outvec'][1] = 7.0*p2**2 - 13.0*p1
+
+    def linearize(self, params, unknowns, resids):
+        """ Derivatives"""
+
+        p1 = params['invec'][0]
+        p2 = params['invec'][1]
+
+        J = {}
+        jac = np.zeros((2, 2))
+        jac[0][0] = 2.0*p1
+        jac[0][1] = -11.0
+        jac[1][0] = -13.0
+        jac[1][1] = 7.0*p2
+
+        J[('outvec', 'invec')] = jac
+        return J
+
+    def setup_distrib(self):
+        """ component declares the local sizes and sets initial values
+        for all distributed inputs and outputs. Returns a dict of
+        index arrays keyed to variable names.
+        """
+
+        comm = self.comm
+        rank = comm.rank
+
+        sizes, offsets = evenly_distrib_idxs(comm.size, self.arr_size)
+        start = offsets[rank]
+        end = start + sizes[rank]
+
+        self.set_var_indices('invec', val=np.ones(sizes[rank], float),
+                             src_indices=np.arange(start, end, dtype=int))
+        self.set_var_indices('outvec', val=np.ones(sizes[rank], float),
+                             src_indices=np.arange(start, end, dtype=int))
+
+    def get_req_procs(self):
+        return (2, 2)
+
+
+class ElementwiseParallelDerivativesTestCase(MPITestCase):
+
+    N_PROCS = 2
+
+    def test_simple_adjoint(self):
+        top = Problem(impl=impl)
+        root = top.root = Group()
+        root.add('dcomp', DistComp())
+        root.add('p1', IndepVarComp('x', np.ones((4, ))))
+
+        top.driver.add_desvar('p1.x', np.ones((4, )))
+        top.driver.add_objective('dcomp.outvec')
+        top.root.connect('p1.x', 'dcomp.invec')
+
+        top.setup(check=False)
+
+        top['p1.x'][0] = 1.0
+        top['p1.x'][1] = 2.0
+        top['p1.x'][2] = 3.0
+        top['p1.x'][3] = 4.0
+
+        top.run()
+
+        J = top.calc_gradient(['p1.x'], ['dcomp.outvec'], mode='rev')
+
+        assert_rel_error(self, J[0][0], 2.0, 1e-6)
+        assert_rel_error(self, J[0][1], -11.0, 1e-6)
+        assert_rel_error(self, J[0][2], 4.0, 1e-6)
+        assert_rel_error(self, J[0][3], -11.0, 1e-6)
+
 if __name__ == '__main__':
     from openmdao.test.mpi_util import mpirun_tests
     mpirun_tests()
+

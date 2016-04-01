@@ -54,8 +54,9 @@ class DistribCompSimple(Component):
     def __init__(self, arr_size=10):
         super(DistribCompSimple, self).__init__()
 
-        self.add_param('invec', np.ones(arr_size, float))
-        self.add_output('outvec', np.ones(arr_size, float))
+        #self.add_param('invec', np.ones(arr_size, float))
+        self.add_param('invec', np.ones(2, float))
+        self.add_output('outvec', np.zeros(arr_size, float))
 
     def solve_nonlinear(self, params, unknowns, resids):
         if MPI and self.comm != MPI.COMM_NULL:
