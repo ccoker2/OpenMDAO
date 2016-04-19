@@ -7,6 +7,8 @@ from openmdao.solvers.backtracking import BackTracking
 from openmdao.solvers.solver_base import NonLinearSolver
 from openmdao.util.record_util import update_local_meta, create_local_meta
 
+import numpy as np
+norm = np.linalg.norm
 
 class Newton(NonLinearSolver):
     """A python Newton solver that solves a linear system to determine the
@@ -112,7 +114,9 @@ class Newton(NonLinearSolver):
         system.apply_nonlinear(params, unknowns, resids)
 
         f_norm = resids.norm()
-        f_norm0 = f_norm
+        #f_norm0 = f_norm
+        f_norm0 = norm(resids.vec) / norm(unknowns.vec)
+
 
         if self.options['iprint'] > 0:
             self.print_norm(self.print_name, system.pathname, 0, f_norm,
@@ -122,13 +126,19 @@ class Newton(NonLinearSolver):
         result = system.dumat[None]
 
         while self.iter_count < maxiter and f_norm > atol and \
-                f_norm/f_norm0 > rtol:
+                f_norm0 > rtol:
 
             # Linearize Model with partial derivatives
             system._sys_linearize(params, unknowns, resids, total_derivs=False)
 
             # Calculate direction to take step
             arg.vec[:] = -resids.vec
+            #idx = np.where((resids.vec != 0.0) & (unknowns.vec != 0.0))
+            #idx = np.where(resids.vec != 0.0)
+            #f_norm0 = norm(resids.vec[idx]) / norm(unknowns.vec[idx])
+            
+            f_norm0 = norm(resids.vec) / norm(unknowns.vec)
+
             with system._dircontext:
                 system.solve_linear(system.dumat, system.drmat,
                                     [None], mode='fwd', solver=self.ln_solver)
@@ -137,6 +147,7 @@ class Newton(NonLinearSolver):
             self.iter_count += 1
             f_norm = self.line_search.solve(params, unknowns, resids, system,
                                             self, alpha, f_norm0, metadata)
+
 
         # Need to make sure the whole workflow is executed at the final
         # point, not just evaluated.
