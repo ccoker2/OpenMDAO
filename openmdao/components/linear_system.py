@@ -36,19 +36,19 @@ class LinearSystem(Component):
         self.add_param("A", val=np.eye(size))
         self.add_param("b", val=np.ones(size))
 
-        self.add_state("x", val=np.zeros(size))
+        self.add_output("x", val=np.zeros(size))
 
     def solve_nonlinear(self, params, unknowns, resids):
         """ Use numpy to solve Ax=b for x.
         """
 
         unknowns['x'] = np.linalg.solve(params['A'], params['b'])
-        resids['x'] = params['A'].dot(unknowns['x']) - params['b']
+        #resids['x'] = params['A'].dot(unknowns['x']) - params['b']
 
-    def apply_nonlinear(self, params, unknowns, resids):
-        """Evaluating residual for given state."""
+    # def apply_nonlinear(self, params, unknowns, resids):
+    #     """Evaluating residual for given state."""
 
-        resids['x'] = params['A'].dot(unknowns['x']) - params['b']
+    #     resids['x'] = params['A'].dot(unknowns['x']) - params['b']
 
     def apply_linear(self, params, unknowns, dparams, dunknowns, dresids, mode):
         """ Apply the derivative of state variable with respect to
@@ -57,17 +57,17 @@ class LinearSystem(Component):
         if mode == 'fwd':
 
             if 'x' in dunknowns:
-                dresids['x'] += params['A'].dot(dunknowns['x'])
+                dunknowns['x'] += params['A'].dot(dunknowns['x'])
             if 'A' in dparams:
-                dresids['x'] += dparams['A'].dot(unknowns['x'])
+                dunknowns['x'] += dparams['A'].dot(unknowns['x'])
             if 'b' in dparams:
-                dresids['x'] -= dparams['b']
+                dunknowns['x'] -= dparams['b']
 
         elif mode == 'rev':
 
             if 'x' in dunknowns:
-                dunknowns['x'] += params['A'].T.dot(dresids['x'])
+                dunknowns['x'] += params['A'].T.dot(dunknowns['x'])
             if 'A' in dparams:
-                dparams['A'] += np.outer(unknowns['x'], dresids['x']).T
+                dparams['A'] += np.outer(unknowns['x'], dunknowns['x']).T
             if 'b' in dparams:
-                dparams['b'] -= dresids['x']
+                dparams['b'] -= dunknowns['x']
