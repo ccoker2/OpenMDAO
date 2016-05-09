@@ -83,7 +83,7 @@ class SolverBase(object):
             return
 
         form = indent + '[%s] %s: %s   %d | %.9g %.9g'
-        print(form % (name, solver, solver_string, iteration, res, res/res0))
+        print(form % (name, solver, solver_string, iteration, res, res0))
 
     def print_all_convergence(self):
         """ Turns on iprint for this solver and all subsolvers. Override if

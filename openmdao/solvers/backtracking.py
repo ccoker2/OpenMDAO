@@ -86,7 +86,6 @@ class BackTracking(LineSearch):
         # If our step will violate any upper or lower bounds, then reduce
         # alpha so that we only step to that boundary.
         alpha = unknowns.distance_along_vector_to_limit(alpha, result)
-
         # Apply step that doesn't violate bounds
         unknowns.vec += alpha*result.vec
 
@@ -113,9 +112,9 @@ class BackTracking(LineSearch):
         # Further backtacking if needed.
         while itercount < maxiter and \
               fnorm > atol and \
-              fnorm/fnorm0 > rtol:
+              fnorm0 > rtol:
 
-            ls_alpha *= 0.5
+            #ls_alpha *= 0.5
             unknowns.vec -= ls_alpha*result.vec
             itercount += 1
 
