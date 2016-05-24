@@ -586,7 +586,6 @@ class Component(System):
             `VecWrapper` containing residuals. (r)
         """
         self.solve_nonlinear(params, unknowns, resids)
-        unknowns._scale_values()
 
     def solve_nonlinear(self, params, unknowns, resids):
         """
