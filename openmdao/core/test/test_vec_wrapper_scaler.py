@@ -1,4 +1,4 @@
-""" Test out the 'resid_scaler' metadata, which allows a user to scale an unknown
+""" Test out the 'resid_scaler' and 'scaler' metadata, which allows a user to scale an unknown
 or residual on the way in."""
 from __future__ import print_function
 
@@ -8,9 +8,38 @@ from six.moves import cStringIO
 
 import numpy as np
 
-from openmdao.api import Problem, Group, Component, IndepVarComp, ExecComp, ScipyGMRES, Newton
+from openmdao.api import Problem, Group, Component, IndepVarComp, ExecComp, ScipyGMRES, Newton, \
+                         PetscImpl, PetscKSP
 from openmdao.test.util import assert_rel_error
 from openmdao.test.sellar import SellarDis1withDerivatives, SellarDis2withDerivatives
+
+
+class BasicComp(Component):
+    """ Simple component to demonstrate scaling an unknown."""
+
+    def __init__(self):
+        super(BasicComp, self).__init__()
+
+        # Params
+        self.add_param('x', 2000.0)
+
+        # Unknowns
+        self.add_output('y', 6000.0, scaler=1000.0)
+
+        self.store_y = 0.0
+
+    def solve_nonlinear(self, params, unknowns, resids):
+        """ Doesn't do much. """
+
+        unknowns['y'] = 3.0*params['x']
+        self.store_y = unknowns['y']
+
+    def linearize(self, params, unknowns, resids):
+        """Analytical derivatives."""
+
+        J = {}
+        J[('y', 'x')] = np.array([[3.0]])
+        return J
 
 
 class SimpleImplicitComp(Component):
@@ -91,6 +120,7 @@ class SimpleImplicitComp(Component):
         J[('z', 'x')] = np.array([unknowns['z']])
 
         return J
+
 
 class SimpleImplicitCompApply(SimpleImplicitComp):
     """ Use apply_lineaer instead."""
@@ -202,6 +232,142 @@ class SellarStateConnection(Group):
 
 
 class TestVecWrapperScaler(unittest.TestCase):
+
+    def test_basic(self):
+        top = Problem()
+        root = top.root = Group()
+        root.add('p', IndepVarComp('x', 2000.0))
+        root.add('comp1', BasicComp())
+        root.add('comp2', ExecComp(['y = 2.0*x']))
+        root.connect('p.x', 'comp1.x')
+        root.connect('comp1.y', 'comp2.x')
+
+        top.driver.add_desvar('p.x', 2000.0)
+        top.driver.add_objective('comp2.y')
+
+        top.root.ln_solver = ScipyGMRES()
+
+        root.comp1.deriv_options['check_type'] = 'cs'
+
+        top.setup(check=False)
+        top.run()
+
+        # correct execution, scale does not affect downstream output
+        assert_rel_error(self, top['comp2.y'], 12000.0, 1e-6)
+
+        # in-component query is unscaled
+        assert_rel_error(self, root.comp1.store_y, 6000.0, 1e-6)
+
+        # afterwards direct query is unscaled
+        assert_rel_error(self, root.unknowns['comp1.y'], 6000.0, 1e-6)
+
+        # Correct derivatives
+        J = top.calc_gradient(['p.x'], ['comp2.y'], mode='fwd')
+        assert_rel_error(self, J[0][0], 6.0, 1e-6)
+
+        J = top.calc_gradient(['p.x'], ['comp2.y'], mode='rev')
+        assert_rel_error(self, J[0][0], 6.0, 1e-6)
+
+        J = top.calc_gradient(['p.x'], ['comp2.y'], mode='fd')
+        assert_rel_error(self, J[0][0], 6.0, 1e-6)
+
+        # Clean up old FD
+        top.run()
+
+        # Make sure check_partial_derivatives works too
+        data = top.check_partial_derivatives(out_stream=None)
+        #data = top.check_partial_derivatives()
+
+        for key1, val1 in iteritems(data):
+            for key2, val2 in iteritems(val1):
+                assert_rel_error(self, val2['abs error'][0], 0.0, 1e-5)
+                assert_rel_error(self, val2['abs error'][1], 0.0, 1e-5)
+                assert_rel_error(self, val2['abs error'][2], 0.0, 1e-5)
+                assert_rel_error(self, val2['rel error'][0], 0.0, 1e-5)
+                assert_rel_error(self, val2['rel error'][1], 0.0, 1e-5)
+                assert_rel_error(self, val2['rel error'][2], 0.0, 1e-5)
+
+        # Clean up old FD
+        top.run()
+
+        # Make sure check_totals works too
+        data = top.check_total_derivatives(out_stream=None)
+
+        for key1, val1 in iteritems(data):
+            assert_rel_error(self, val1['abs error'][0], 0.0, 1e-5)
+            assert_rel_error(self, val1['abs error'][1], 0.0, 1e-5)
+            assert_rel_error(self, val1['abs error'][2], 0.0, 1e-5)
+            assert_rel_error(self, val1['rel error'][0], 0.0, 1e-5)
+            assert_rel_error(self, val1['rel error'][1], 0.0, 1e-5)
+            assert_rel_error(self, val1['rel error'][2], 0.0, 1e-5)
+
+    def test_basic_petsc(self):
+        top = Problem(impl=PetscImpl)
+        root = top.root = Group()
+        root.add('p', IndepVarComp('x', 2000.0))
+        root.add('comp1', BasicComp())
+        root.add('comp2', ExecComp(['y = 2.0*x']))
+        root.connect('p.x', 'comp1.x')
+        root.connect('comp1.y', 'comp2.x')
+
+        top.driver.add_desvar('p.x', 2000.0)
+        top.driver.add_objective('comp2.y')
+
+        top.root.ln_solver = PetscKSP()
+
+        root.comp1.deriv_options['check_type'] = 'cs'
+
+        top.setup(check=False)
+        top.run()
+
+        # correct execution, scale does not affect downstream output
+        assert_rel_error(self, top['comp2.y'], 12000.0, 1e-6)
+
+        # in-component query is unscaled
+        assert_rel_error(self, root.comp1.store_y, 6000.0, 1e-6)
+
+        # afterwards direct query is unscaled
+        assert_rel_error(self, root.unknowns['comp1.y'], 6000.0, 1e-6)
+
+        # Correct derivatives
+        J = top.calc_gradient(['p.x'], ['comp2.y'], mode='fwd')
+        assert_rel_error(self, J[0][0], 6.0, 1e-6)
+
+        J = top.calc_gradient(['p.x'], ['comp2.y'], mode='rev')
+        assert_rel_error(self, J[0][0], 6.0, 1e-6)
+
+        J = top.calc_gradient(['p.x'], ['comp2.y'], mode='fd')
+        assert_rel_error(self, J[0][0], 6.0, 1e-6)
+
+        # Clean up old FD
+        top.run()
+
+        # Make sure check_partial_derivatives works too
+        data = top.check_partial_derivatives(out_stream=None)
+        #data = top.check_partial_derivatives()
+
+        for key1, val1 in iteritems(data):
+            for key2, val2 in iteritems(val1):
+                assert_rel_error(self, val2['abs error'][0], 0.0, 1e-5)
+                assert_rel_error(self, val2['abs error'][1], 0.0, 1e-5)
+                assert_rel_error(self, val2['abs error'][2], 0.0, 1e-5)
+                assert_rel_error(self, val2['rel error'][0], 0.0, 1e-5)
+                assert_rel_error(self, val2['rel error'][1], 0.0, 1e-5)
+                assert_rel_error(self, val2['rel error'][2], 0.0, 1e-5)
+
+        # Clean up old FD
+        top.run()
+
+        # Make sure check_totals works too
+        data = top.check_total_derivatives(out_stream=None)
+
+        for key1, val1 in iteritems(data):
+            assert_rel_error(self, val1['abs error'][0], 0.0, 1e-5)
+            assert_rel_error(self, val1['abs error'][1], 0.0, 1e-5)
+            assert_rel_error(self, val1['abs error'][2], 0.0, 1e-5)
+            assert_rel_error(self, val1['rel error'][0], 0.0, 1e-5)
+            assert_rel_error(self, val1['rel error'][1], 0.0, 1e-5)
+            assert_rel_error(self, val1['rel error'][2], 0.0, 1e-5)
 
     def test_simple_implicit(self):
 
@@ -550,6 +716,62 @@ class TestVecWrapperScaler(unittest.TestCase):
             z = Comp2()
 
         msg = ("resid_scaler is only supported for states.")
+        self.assertEqual(str(cm.exception), msg)
+
+        class Comp3(Component):
+            """ Comp with a scaler or resid_scaler that raises an exception."""
+
+            def __init__(self):
+                super(Comp3, self).__init__()
+
+                self.add_param('y', 6000.0, scaler=1.0)
+
+        with self.assertRaises(ValueError) as cm:
+            z = Comp3()
+
+        msg = ("scaler is only supported for outputs and states.")
+        self.assertEqual(str(cm.exception), msg)
+
+        class Comp4(Component):
+            """ Comp with a scaler or resid_scaler that raises an exception."""
+
+            def __init__(self):
+                super(Comp4, self).__init__()
+
+                self.add_output('y', 6000.0, scaler=0.0)
+
+        with self.assertRaises(ValueError) as cm:
+            z = Comp4()
+
+        msg = ("scaler value must be nonzero.")
+        self.assertEqual(str(cm.exception), msg)
+
+        class Comp4(Component):
+            """ Comp with a scaler or resid_scaler that raises an exception."""
+
+            def __init__(self):
+                super(Comp4, self).__init__()
+
+                self.add_output('y', 6000.0, scaler=0.0)
+
+        with self.assertRaises(ValueError) as cm:
+            z = Comp4()
+
+        msg = ("scaler value must be nonzero.")
+        self.assertEqual(str(cm.exception), msg)
+
+        class Comp5(Component):
+            """ Comp with a scaler or resid_scaler that raises an exception."""
+
+            def __init__(self):
+                super(Comp5, self).__init__()
+
+                self.add_state('y', 6000.0, scaler=0.0)
+
+        with self.assertRaises(ValueError) as cm:
+            z = Comp5()
+
+        msg = ("scaler value must be nonzero.")
         self.assertEqual(str(cm.exception), msg)
 
         class Comp6(Component):

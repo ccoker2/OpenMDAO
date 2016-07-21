@@ -66,6 +66,9 @@ class ScipyGMRES(MultLinearSolver):
         # User can specify another linear solver to use as a preconditioner
         self.preconditioner = None
 
+        # Cache of the unknowns or states that have scalers defined
+        self._scaled_vars = None
+
     def setup(self, sub):
         """ Initialize sub solvers.
 
@@ -76,6 +79,18 @@ class ScipyGMRES(MultLinearSolver):
         """
         if self.preconditioner:
             self.preconditioner.setup(sub)
+
+        # Cache the scalers
+        if sub.is_active():
+            scales = []
+            unk = sub.unknowns
+            for item in unk:
+                meta = unk.metadata(item)
+                if 'scaler' in meta:
+                    scales.append((item, meta['scaler']))
+
+            if len(scales) > 0:
+                self._scaled_vars = scales
 
     def solve(self, rhs_mat, system, mode):
         """ Solves the linear system for the problem in self.system. The
@@ -114,7 +129,7 @@ class ScipyGMRES(MultLinearSolver):
                                dtype=float)
 
             # Support a preconditioner
-            if self.preconditioner:
+            if self.preconditioner or self._scaled_vars is not None:
                 M = LinearOperator((n_edge, n_edge),
                                    matvec=self._precon,
                                    dtype=float)
@@ -189,21 +204,33 @@ class ScipyGMRES(MultLinearSolver):
         # Set incoming vector
         rhs_vec.vec[:] = arg[:]
 
-        # Start with a clean slate
-        system.clear_dparams()
+        # Apply unknown and state scaling
+        if self._scaled_vars is not None:
+            for name, val in self._scaled_vars:
+                rhs_vec[name] /= val
 
-        dumat = OrderedDict()
-        dumat[voi] = system.dumat[voi]
-        drmat = OrderedDict()
-        drmat[voi] = system.drmat[voi]
+        if self.preconditioner:
 
-        with system._dircontext:
-            system.solve_linear(dumat, drmat, (voi, ), mode=mode,
-                                solver=self.preconditioner)
+            # Start with a clean slate
+            system.clear_dparams()
 
-        #print("arg", arg)
-        #print("preconditioned arg", sol_vec.vec)
-        return sol_vec.vec
+            dumat = OrderedDict()
+            dumat[voi] = system.dumat[voi]
+            drmat = OrderedDict()
+            drmat[voi] = system.drmat[voi]
+
+            with system._dircontext:
+                system.solve_linear(dumat, drmat, (voi, ), mode=mode,
+                                    solver=self.preconditioner)
+
+            #print("arg", arg)
+            #print("preconditioned arg", sol_vec.vec)
+            return sol_vec.vec
+        else:
+
+            #print("arg", arg)
+            #print("preconditioned arg", rhs_vec.vec)
+            return rhs_vec.vec
 
     def monitor(self, res):
         """ GMRES Callback: Prints the current residual norm.

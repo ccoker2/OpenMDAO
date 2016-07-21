@@ -183,6 +183,10 @@ class Component(System):
             msg = ("resid_scaler is only supported for states.")
             raise ValueError(msg)
 
+        if 'scaler' in kwargs:
+            msg = ("scaler is only supported for outputs and states.")
+            raise ValueError(msg)
+
         self._init_params_dict[name] = self._add_variable(name, val, **kwargs)
 
     def add_output(self, name, val=_NotSet, **kwargs):
@@ -201,6 +205,14 @@ class Component(System):
         if 'resid_scaler' in kwargs:
             msg = ("resid_scaler is only supported for states.")
             raise ValueError(msg)
+
+        if 'scaler' in kwargs:
+            scaler = kwargs['scaler']
+            if scaler == 0:
+                msg = ("scaler value must be nonzero.")
+                raise ValueError(msg)
+
+            kwargs['scaler'] = float(scaler)
 
         shape = kwargs.get('shape')
         self._check_val(name, 'output', val, shape)
@@ -225,6 +237,14 @@ class Component(System):
                 raise ValueError(msg)
 
             kwargs['resid_scaler'] = float(resid_scaler)
+
+        if 'scaler' in kwargs:
+            scaler = kwargs['scaler']
+            if scaler == 0:
+                msg = ("scaler value must be nonzero.")
+                raise ValueError(msg)
+
+            kwargs['scaler'] = float(scaler)
 
         shape = kwargs.get('shape')
         self._check_val(name, 'state', val, shape)

@@ -118,6 +118,9 @@ class PetscKSP(LinearSolver):
         # User can specify another linear solver to use as a preconditioner
         self.preconditioner = None
 
+        # Cache of the unknowns or states that have scalers defined
+        self._scaled_vars = None
+
     def setup(self, system):
         """ Setup petsc problem just once.
 
@@ -167,6 +170,18 @@ class PetscKSP(LinearSolver):
 
         if self.preconditioner:
             self.preconditioner.setup(system)
+
+        # Cache the scalers
+        if system.is_active():
+            scales = []
+            unk = system.unknowns
+            for item in unk:
+                meta = unk.metadata(item)
+                if 'scaler' in meta:
+                    scales.append((item, meta['scaler']))
+
+            if len(scales) > 0:
+                self._scaled_vars = scales
 
     def solve(self, rhs_mat, system, mode):
         """ Solves the linear system for the problem in self.system. The
@@ -300,10 +315,6 @@ class PetscKSP(LinearSolver):
             Empty vector into which we return the preconditioned arg
         """
 
-        if self.preconditioner is None:
-            result.array[:] = _get_petsc_vec_array(arg)
-            return
-
         system = self.system
         mode = self.mode
 
@@ -316,16 +327,28 @@ class PetscKSP(LinearSolver):
         # Set incoming vector
         rhs_vec.vec[:] = _get_petsc_vec_array(arg)
 
-        # Start with a clean slate
-        system.clear_dparams()
+        # Apply unknown and state scaling
+        if self._scaled_vars is not None:
+            for name, val in self._scaled_vars:
+                rhs_vec[name] /= val
 
-        dumat = OrderedDict()
-        dumat[voi] = system.dumat[voi]
-        drmat = OrderedDict()
-        drmat[voi] = system.drmat[voi]
+        if self.preconditioner:
 
-        with system._dircontext:
-            system.solve_linear(dumat, drmat, (voi, ), mode=mode,
-                                solver=self.preconditioner)
+            # Start with a clean slate
+            system.clear_dparams()
 
-        result.array[:] = sol_vec.vec
+            dumat = OrderedDict()
+            dumat[voi] = system.dumat[voi]
+            drmat = OrderedDict()
+            drmat[voi] = system.drmat[voi]
+
+            with system._dircontext:
+                system.solve_linear(dumat, drmat, (voi, ), mode=mode,
+                                    solver=self.preconditioner)
+
+            result.array[:] = sol_vec.vec
+
+        else:
+            result.array[:] = rhs_vec.vec
+
+        return
