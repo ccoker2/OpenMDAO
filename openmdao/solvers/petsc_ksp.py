@@ -330,7 +330,7 @@ class PetscKSP(LinearSolver):
         # Apply unknown and state scaling
         if self._scaled_vars is not None:
             for name, val in self._scaled_vars:
-                rhs_vec[name] /= val
+                rhs_vec[name] *= 1.0/val
 
         if self.preconditioner:
 
