@@ -174,6 +174,7 @@ class Newton(NonLinearSolver):
             with system._dircontext:
                 system.solve_linear(system.dumat, system.drmat,
                                     [None], mode='fwd', solver=self.ln_solver)
+            system.clear_dparams()
 
             self.iter_count += 1
 
