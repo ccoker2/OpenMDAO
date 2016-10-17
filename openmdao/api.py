@@ -53,6 +53,7 @@ from openmdao.solvers.run_once import RunOnce
 from openmdao.solvers.scipy_gmres import ScipyGMRES
 from openmdao.solvers.solver_base import LinearSolver, NonLinearSolver
 from openmdao.solvers.brent import Brent
+from openmdao.solvers.broyden import BroydenSolver
 try:
     from openmdao.solvers.petsc_ksp import PetscKSP
 except ImportError:
