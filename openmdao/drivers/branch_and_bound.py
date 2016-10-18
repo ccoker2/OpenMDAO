@@ -610,7 +610,11 @@ class Branch_and_Bound(Driver):
                         LBD_NegConEI = np.inf
                     dis_flag[ii] = 'F'
                 else:
-                    LBD_NegConEI = max(NegEI/(1.0 + np.sum(EV)), LBD_prev)
+                    EV_mean = np.mean(EV, axis=0)
+                    EV_std = np.std(EV, axis=0)
+                    EV_std[EV_std == 0.] = 1.
+                    EV_norm = (EV - EV_mean) / EV_std
+                    LBD_NegConEI = max(NegEI/(1.0 + np.sum(EV_norm)), LBD_prev)
 
                 #--------------------------------------------------------------
                 # Step 5: Store any new node inside the active set that has LBD
@@ -618,6 +622,7 @@ class Branch_and_Bound(Driver):
                 #--------------------------------------------------------------
 
                 if LBD_NegConEI < UBD - 1.0e-6:
+                    node_num += 1
                     new_node = [node_num, lb, ub, LBD_NegConEI, floc_iter]
                     new_nodes.append(new_node)
                     child_info[ii] = np.array([node_num, LBD_NegConEI, floc_iter])
@@ -692,7 +697,11 @@ class Branch_and_Bound(Driver):
                 for mm in range(M):
                     EV[mm] = calc_conEV_norm(xval, con_surrogate[mm])
 
-            conNegEI = NegEI/(1.0+np.sum(EV))
+            EV_mean = np.mean(EV, axis=0)
+            EV_std = np.std(EV, axis=0)
+            EV_std[EV_std == 0.] = 1.
+            EV_norm = (EV - EV_mean) / EV_std
+            conNegEI = NegEI/(1.0 + np.sum(EV_norm))
 
             P = 0.0
 
@@ -1238,7 +1247,7 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
     """This modules evaluates the expected improvement in the normalized
     design sapce"""
 
-    g_min = 0.0
+    g_min = 1.0e-6
 
     if gSSqr is None:
         X = con_surrogate.X
