@@ -400,10 +400,14 @@ class Branch_and_Bound(Driver):
             comm = None
             n_proc = 1
 
-        # Initial node. This is the data structure we pass into the
-        # concurrent evaluator. TODO: wonder if we can clean this up.
-        args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                xopt, node_num)]
+        # # Initial node. This is the data structure we pass into the
+        # # concurrent evaluator. TODO: wonder if we can clean this up.
+        # args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
+        #         xopt, node_num)]
+
+        # Initial number of nodes based on number of available procs
+        args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
+                xopt)
 
         while not terminate:
 
@@ -787,7 +791,7 @@ class Branch_and_Bound(Driver):
                                                 title='Maximize_S',
                                                 options={'Major optimality tolerance' : self.options['ftol']},
                                                 jac=Ain_hat,
-                                                )#sens=self.calc_SSqr_convex_grad)
+                                                ) #sens=self.calc_SSqr_convex_grad)
 
             Neg_sU = opt_f
             # if not succ_flag:
@@ -1278,3 +1282,54 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
         EV = (ei1 + ei2)
 
     return EV
+
+def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt):
+    edge_len = xU_iter-xL_iter
+    edge_len[edge_len == 0.0] = 1.0e-6
+    init_vol = np.prod(edge_len, axis=0)
+    tot_vol = 0.0
+    if N>1:
+        num_cut = N-1
+        new_nodes = [[xL_iter, xU_iter, init_vol]]
+        for cut in range(num_cut):
+            all_area = [item[2] for item in new_nodes]
+            maxA = max(all_area)
+            ind_maxA = all_area.index(maxA)
+            xL_iter, xU_iter, _ = new_nodes[ind_maxA]
+            del new_nodes[ind_maxA]
+
+            #Branching scheme stays same
+            xloc_iter = np.round(xL_iter + 0.49*(xU_iter - xL_iter))
+            # Choose the largest edge
+            l_iter = (xU_iter - xL_iter).argmax()
+            if xloc_iter[l_iter]<xU_iter[l_iter]:
+                delta = 0.5 #0<delta<1
+            else:
+                delta = -0.5 #-1<delta<0
+            for ii in range(2):
+                lb = xL_iter.copy()
+                ub = xU_iter.copy()
+                if ii == 0:
+                    ub[l_iter] = np.floor(xloc_iter[l_iter]+delta)
+                elif ii == 1:
+                    lb[l_iter] = np.ceil(xloc_iter[l_iter]+delta)
+                edge_len = ub-lb
+                edge_len[edge_len == 0.0] = 1.0e-6
+                vol = np.prod(edge_len, axis=0)
+                new_node = [lb, ub, vol]
+                new_nodes.append(new_node)
+
+        args = []
+        n_nodes = len(new_nodes)
+        for ii in range(n_nodes):
+            xL_iter, xU_iter, vol = new_nodes[ii]
+            tot_vol += vol
+            args.append((xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
+                         xopt, ii+1))
+    else:
+        args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
+                xopt, 0)]
+
+    # red_ds = ((init_vol - tot_vol)/init_vol)*100.0
+    # print red_ds[0],"% reduction in design space achieved!\n"
+    return args
