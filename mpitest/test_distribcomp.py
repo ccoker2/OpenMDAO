@@ -29,9 +29,9 @@ def take_nth(rank, size, seq):
     while True:
         for proc in range(size):
             if rank == proc:
-                yield six.next(it)
+                yield next(it)
             else:
-                six.next(it)
+                next(it)
 
 
 class InOutArrayComp(Component):

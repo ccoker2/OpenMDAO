@@ -2,7 +2,7 @@
 import time
 
 from openmdao.test.mpi_util import MPITestCase
-from openmdao.util.concurrent import concurrent_eval_lb
+from openmdao.util.concurrent import concurrent_eval_lb, concurrent_eval
 
 try:
     from mpi4py import MPI
@@ -31,7 +31,7 @@ def funct(job, option=None):
     return (job, option, rank)
 
 
-class MPITests(MPITestCase):
+class FuncEvalLBTestCase(MPITestCase):
 
     N_PROCS = 6
 
@@ -66,6 +66,52 @@ class MPITests(MPITestCase):
         found = set()
 
         results = concurrent_eval_lb(funct, cases, comm, broadcast=True)
+
+        self.assertEqual(len(results), 10)
+        for r in results:
+            if r[0] is not None:
+                found.add(r[0][0])
+            else:
+                self.assertTrue('Job 5 had an (intentional) error!' in r[1])
+        diff = tofind-found
+        self.assertEqual(diff, set([5])) # job 5 should have failed
+
+
+class FuncEvalTestCase(MPITestCase):
+
+    N_PROCS = 6
+
+    def test_simple(self):
+
+        ncases = 10
+
+        cases = [([i], {'option': 'foo%d'%i}) for i in range(ncases)]
+        tofind = set(range(ncases))
+        found = set()
+
+        results = concurrent_eval(funct, cases, comm)
+
+        if comm is None or comm.rank == 0:
+            self.assertEqual(len(results), 10)
+            for r in results:
+                if r[0] is not None:
+                    found.add(r[0][0])
+                else:
+                    self.assertTrue('Job 5 had an (intentional) error!' in r[1])
+            diff = tofind-found
+            self.assertEqual(diff, set([5])) # job 5 should have failed
+        else:
+            self.assertEqual(results, None)
+
+    def test_allgather(self):
+
+        ncases = 10
+
+        cases = [([i], {'option': 'foo%d'%i}) for i in range(ncases)]
+        tofind = set(range(ncases))
+        found = set()
+
+        results = concurrent_eval(funct, cases, comm, allgather=True)
 
         self.assertEqual(len(results), 10)
         for r in results:

@@ -30,7 +30,7 @@ from openmdao.core.driver import Driver
 from openmdao.core.mpi_wrap import debug
 from openmdao.surrogate_models.kriging import KrigingSurrogate
 from openmdao.test.util import set_pyoptsparse_opt
-from openmdao.util.concurrent import concurrent_eval_lb
+from openmdao.util.concurrent import concurrent_eval
 from openmdao.util.record_util import create_local_meta, update_local_meta
 
 # check that pyoptsparse is installed
@@ -217,7 +217,7 @@ class Branch_and_Bound(Driver):
             A tuple of the form (min_procs, max_procs), indicating the
             min and max processors usable by this `Driver`.
         """
-        return (1, 10000)
+        return (1, None)
 
     def run(self, problem):
         """Execute the Branch_and_Bound method.
@@ -371,6 +371,8 @@ class Branch_and_Bound(Driver):
         LBD = -np.inf
         LBD_prev =- np.inf
 
+        # copy our desvars' user specified upper and lower bounds
+        # FIXME: is this copy really needed here since we copy these again inside the loop?
         xL_iter = self.xI_lb.copy()
         xU_iter = self.xI_ub.copy()
 
@@ -414,8 +416,8 @@ class Branch_and_Bound(Driver):
             # Branch and Bound evaluation of a set of nodes, starting with the initial one.
             # When executed in serial, only a single node is evaluted.
             cases = [(arg, None) for arg in args]
-            results = concurrent_eval_lb(self.evaluate_node, cases,
-                                         comm, broadcast=True)
+            results = concurrent_eval(self.evaluate_node, cases,
+                                      comm, allgather=True)
 
             # Put all the new nodes into active set.
             for result in results:
@@ -496,7 +498,8 @@ class Branch_and_Bound(Driver):
             self.xopt = xopt
             self.fopt = fopt
 
-    def evaluate_node(self, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, node_num):
+    def evaluate_node(self, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD,
+                      fopt, xopt, node_num):
         """ Branch and Bound step on a single node. This function
         encapsulates the portion of the code that runs in parallel."""
 
@@ -590,7 +593,7 @@ class Branch_and_Bound(Driver):
                                 yL_g, eflag_yL_g = self.minimize_y(x_comL, x_comU, Ain_hat,
                                                                    bin_hat, con_surrogate[mm])
                                 if eflag_yL_g:
-                                    EV[mm] = calc_conEV_norm([],
+                                    EV[mm] = calc_conEV_norm(None,
                                                              con_surrogate[mm],
                                                              gSSqr=-sU_g,
                                                              g_hat=yL_g)
@@ -600,7 +603,6 @@ class Branch_and_Bound(Driver):
                             else:
                                 S4_fail = True
                                 break
-
                     else:
                         S4_fail = True
                 else:
@@ -677,7 +679,7 @@ class Branch_and_Bound(Driver):
             else:
                 raise NotImplementedError()
 
-        # When run under AMEIGO, objecitve is the expected improvment
+        # When run under AMEIGO, objective is the expected improvment
         # function with modifications to make it concave.
         else:
             #ModelInfo_obj=param[0];ModelInfo_g=param[1];con_fac=param[2];flag=param[3]
@@ -769,12 +771,12 @@ class Branch_and_Bound(Driver):
 
         # Maximize S
         x0 = 0.5*(xhat_comL + xhat_comU)
-        bnds = [(xhat_comL[ii], xhat_comU[ii]) for ii in range(len(xhat_comL))]
+        #bnds = [(xhat_comL[ii], xhat_comU[ii]) for ii in range(len(xhat_comL))]
 
-        #Note: Python defines constraints like g(x) >= 0
-        cons = [{'type' : 'ineq',
-                 'fun' : lambda x : -np.dot(Ain_hat[ii, :], x) + bin_hat[ii],
-                 'jac' : lambda x : -Ain_hat[ii, :]} for ii in range(2*n)]
+        ##Note: Python defines constraints like g(x) >= 0
+        #cons = [{'type' : 'ineq',
+                 #'fun' : lambda x : -np.dot(Ain_hat[ii, :], x) + bin_hat[ii],
+                 #'jac' : lambda x : -Ain_hat[ii, :]} for ii in range(2*n)]
 
         if self.pyopt:
 
@@ -951,11 +953,11 @@ class Branch_and_Bound(Driver):
 
         if app == 1:
             x0 = 0.5*(xhat_comL + xhat_comU)
-            bnds = [(xhat_comL[ii], xhat_comU[ii]) for ii in range(len(xhat_comL))]
+            #bnds = [(xhat_comL[ii], xhat_comU[ii]) for ii in range(len(xhat_comL))]
 
-            cons = [{'type' : 'ineq',
-                     'fun' : lambda x : -np.dot(Ain_hat[ii, :],x) + bin_hat[ii],
-                     'jac': lambda x: -Ain_hat[ii, :]} for ii in range(2*n)]
+            #cons = [{'type' : 'ineq',
+                     #'fun' : lambda x : -np.dot(Ain_hat[ii, :],x) + bin_hat[ii],
+                     #'jac': lambda x: -Ain_hat[ii, :]} for ii in range(2*n)]
 
         if self.pyopt:
 

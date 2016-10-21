@@ -10,7 +10,7 @@ import traceback
 import logging
 from itertools import chain
 from six.moves import zip
-from six import next, PY3, iteritems, string_types
+from six import PY3, iteritems, string_types
 
 import multiprocessing
 
