@@ -1286,13 +1286,12 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
     return EV
 
 def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt):
-    edge_len = xU_iter-xL_iter
-    edge_len[edge_len == 0.0] = 1.0e-6
-    init_vol = np.prod(edge_len, axis=0)
-    tot_vol = 0.0
-    if N>1:
-        num_cut = N-1
-        new_nodes = [[xL_iter, xU_iter, init_vol]]
+    pts = (xU_iter-xL_iter) + 1.0
+    com_enum = np.prod(pts, axis=0)
+    tot_pts = 0.0
+    num_cut = min(N-1,com_enum-1)
+    if num_cut>0:
+        new_nodes = [[xL_iter, xU_iter, com_enum]]
         for cut in range(num_cut):
             all_area = [item[2] for item in new_nodes]
             maxA = max(all_area)
@@ -1315,23 +1314,20 @@ def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt):
                     ub[l_iter] = np.floor(xloc_iter[l_iter]+delta)
                 elif ii == 1:
                     lb[l_iter] = np.ceil(xloc_iter[l_iter]+delta)
-                edge_len = ub-lb
-                edge_len[edge_len == 0.0] = 1.0e-6
-                vol = np.prod(edge_len, axis=0)
-                new_node = [lb, ub, vol]
+                pts = (ub-lb) + 1.0
+                enum = np.prod(pts, axis=0)
+                new_node = [lb, ub, enum]
                 new_nodes.append(new_node)
 
         args = []
         n_nodes = len(new_nodes)
         for ii in range(n_nodes):
-            xL_iter, xU_iter, vol = new_nodes[ii]
-            tot_vol += vol
+            xL_iter, xU_iter, enum = new_nodes[ii]
+            tot_pts += enum
             args.append((xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
                          xopt, ii+1))
     else:
         args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
                 xopt, 0)]
 
-    # red_ds = ((init_vol - tot_vol)/init_vol)*100.0
-    # print red_ds[0],"% reduction in design space achieved!\n"
     return args
