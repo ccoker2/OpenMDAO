@@ -273,6 +273,7 @@ class AMIEGO_driver(Driver):
 
                 # Optimize continuous variables
                 cont_opt.run(problem)
+                cont_success = cont_opt.success
 
                 # Get objectives and constraints (TODO)
                 current_objs = self.get_objectives()
@@ -283,7 +284,7 @@ class AMIEGO_driver(Driver):
                     cons[name].append(value.copy())
 
                 # If best solution, save it
-                if current_obj < best_obj:
+                if cont_success and current_obj < best_obj:
                     best_obj = current_obj
 
                     # Save integer and continuous DV
