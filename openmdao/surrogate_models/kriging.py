@@ -1,5 +1,5 @@
 """ Surrogate model based on Kriging. """
-
+from __future__ import print_function
 from six import iteritems
 
 import numpy as np
@@ -99,7 +99,7 @@ class KrigingSurrogate(SurrogateModel):
         self.use_snopt = False
         self.eval_rmse = eval_rmse
 
-    def train(self, x, y, normalize=True):
+    def train(self, x, y):
         """
         Train the surrogate model with the given set of inputs and outputs.
 
@@ -128,75 +128,78 @@ class KrigingSurrogate(SurrogateModel):
             )
 
         # Normalize the data
-        if normalize:
-            X_mean = np.mean(x, axis=0)
-            X_std = np.std(x, axis=0)
-            Y_mean = np.mean(y, axis=0)
-            Y_std = np.std(y, axis=0)
+        X_mean = np.mean(x, axis=0)
+        X_std = np.std(x, axis=0)
+        Y_mean = np.mean(y, axis=0)
+        Y_std = np.std(y, axis=0)
 
-            X_std[X_std == 0.] = 1.
-            Y_std[Y_std == 0.] = 1.
+        X_std[X_std == 0.] = 1.
+        Y_std[Y_std == 0.] = 1.
 
-            X = (x - X_mean) / X_std
-            Y = (y - Y_mean) / Y_std
+        X = (x - X_mean) / X_std
+        Y = (y - Y_mean) / Y_std
 
-            self.X = X
-            self.Y = Y
-            self.X_mean, self.X_std = X_mean, X_std
-            self.Y_mean, self.Y_std = Y_mean, Y_std
-        else:
-            self.X = x
-            self.Y = y
+        self.X = X
+        self.Y = Y
+        self.X_mean, self.X_std = X_mean, X_std
+        self.Y_mean, self.Y_std = Y_mean, Y_std
 
+        # Multi-start approach (starting from 3 different locations) #TODO May be we want to parallelize this
+        best_loglike = np.inf
+        wt = np.array([0.25,0.5,0.75])
+        for ii in range(len(wt)):
+            x0 = -3.0*np.ones([self.n_dims, 1]) + wt[ii]*(5.0*np.ones([self.n_dims, 1]))
+            if self.use_snopt:
+                def _calcll(dv_dict):
+                    """ Callback function"""
+                    fail = 0
+                    thetas = dv_dict['thetas']
 
-        x0 = -3.0*np.ones([self.n_dims, 1]) + 0.5*(5.0*np.ones([self.n_dims, 1]))
+                    loglike = self._calculate_reduced_likelihood_params(10**thetas)[0]
 
-        if self.use_snopt:
+                    # Objective
+                    func_dict = {}
+                    func_dict['obj'] = -loglike
 
-            def _calcll(dv_dict):
-                """ Callback function"""
-                fail = 0
-                thetas = dv_dict['thetas']
+                    return func_dict, fail
 
-                loglike = self._calculate_reduced_likelihood_params(10**thetas, normalize=normalize)[0]
+                low = -3.0*np.ones([self.n_dims, 1])
+                high = 2.0*np.ones([self.n_dims, 1])
+                # print("Using SNOPT!")
+                opt_x, opt_f, succ_flag, msg = snopt_opt(_calcll, x0, low, high, title='kriging',
+                                                         options={'Major optimality tolerance' : 1.0e-6})
 
-                # Objective
-                func_dict = {}
-                func_dict['obj'] = -loglike
+                if not succ_flag:
+                    pass
+                    #raise ValueError('Kriging Hyper-parameter optimization failed: {0}'.format(msg))
 
-                return func_dict, fail
+                thetas = np.asarray(10**opt_x).flatten()
+                fval = opt_f
+            else:
 
-            low = -3.0*np.ones([self.n_dims, 1])
-            high = 2.0*np.ones([self.n_dims, 1])
-            opt_x, opt_f, succ_flag, msg = snopt_opt(_calcll, x0, low, high, title='kriging',
-                                                     options={'Major optimality tolerance' : 1.0e-6})
+                def _calcll(thetas):
+                    """ Callback function"""
+                    loglike = self._calculate_reduced_likelihood_params(10**thetas)[0]
+                    return -loglike
 
-            if not succ_flag:
-                pass
-                #raise ValueError('Kriging Hyper-parameter optimization failed: {0}'.format(msg))
+                bounds = [(-3.0, 2.0) for _ in range(self.n_dims)]
+                # print("Using Cobyla")
+                optResult = minimize(_calcll, x0, method='cobyla',
+                                     options={'ftol': 1e-6},
+                                     bounds=bounds)
 
-            self.thetas = np.asarray(10**opt_x).flatten()
+                if not optResult.success:
+                    pass
+                    #raise ValueError('Kriging Hyper-parameter optimization failed: {0}'.format(optResult.message))
 
-        else:
+                thetas = 10**optResult.x.flatten()
+                fval = optResult.fun
 
-            def _calcll(thetas):
-                """ Callback function"""
-                loglike = self._calculate_reduced_likelihood_params(10**thetas, normalize=normalize)[0]
-                return -loglike
+            if best_loglike > fval:
+                best_loglike = fval*1.0
+                self.thetas = thetas
 
-            #bounds = [(-3.0, 2.0) for _ in range(self.n_dims)]
-            optResult = minimize(_calcll, x0, method='cobyla')
-                                 #options={'ftol': 1e-3},
-                                 #bounds=bounds)
-
-            if not optResult.success:
-                pass
-                #raise ValueError('Kriging Hyper-parameter optimization failed: {0}'.format(optResult.message))
-
-            self.thetas = 10**optResult.x.flatten()
-
-        _, params = self._calculate_reduced_likelihood_params(normalize=normalize)
-
+        _, params = self._calculate_reduced_likelihood_params()
         self.c_r = params['c_r']
         self.U = params['U']
         self.S_inv = params['S_inv']
@@ -205,7 +208,7 @@ class KrigingSurrogate(SurrogateModel):
         self.SigmaSqr = params['SigmaSqr']
         self.R_inv = params['R_inv']
 
-    def _calculate_reduced_likelihood_params(self, thetas=None, normalize=True):
+    def _calculate_reduced_likelihood_params(self, thetas=None):
         """
         Calculates a quantity with the same maximum location as the log-likelihood for a given theta.
 
@@ -257,14 +260,11 @@ class KrigingSurrogate(SurrogateModel):
         params['Vh'] = Vh
         params['R_inv'] = R_inv
         params['mu'] = mu
-        if normalize:
-            params['SigmaSqr'] = SigmaSqr * np.square(self.Y_std)
-        else:
-            params['SigmaSqr'] = SigmaSqr
+        params['SigmaSqr'] = SigmaSqr #This is wrt normalized y
 
         return reduced_likelihood, params
 
-    def predict(self, x, normalize=True):
+    def predict(self, x):
         """
         Calculates a predicted value of the response based on the current
         trained model for the supplied list of inputs.
@@ -287,11 +287,7 @@ class KrigingSurrogate(SurrogateModel):
         x = np.atleast_2d(x)
         n_eval = x.shape[0]
 
-        if normalize:
-            # Normalize input
-            x_n = (x - self.X_mean) / self.X_std
-        else:
-            x_n = x
+        x_n = (x - self.X_mean) / self.X_std
 
         r = np.zeros((n_eval, self.n_samples), dtype=x.dtype)
         for r_i, x_i in zip(r, x_n):
@@ -302,10 +298,8 @@ class KrigingSurrogate(SurrogateModel):
 
         # Predictor
         y_t = self.mu + np.dot(r.T, self.c_r)
-        if normalize:
-            y = self.Y_mean + self.Y_std * y_t
-        else:
-            y = y_t
+        y = self.Y_mean + self.Y_std * y_t
+
 
         if self.eval_rmse:
             one = np.ones([self.n_samples,1])
