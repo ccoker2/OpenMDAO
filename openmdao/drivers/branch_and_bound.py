@@ -398,24 +398,30 @@ class Branch_and_Bound(Driver):
         # Each node is a list.
         active_set = []
 
-        # Initial node. This is the data structure we pass into the
-        # concurrent evaluator. TODO: wonder if we can clean this up.
         comm = problem.root.comm
-        if self.aggressive_splitting:
+        if self.load_balance:
 
+            # Master/Worker config
+            n_proc = comm.size - 1
+            if n_proc < 2:
+                comm = None
+                n_proc = 1
+
+        else:
+
+            # Each proc has its own jobs
             n_proc = comm.size
             if n_proc < 2:
                 comm = None
+
+        # Initial node. This is the data structure we pass into the
+        # concurrent evaluator. TODO: wonder if we can clean this up.
+        if self.aggressive_splitting:
 
             # Initial number of nodes based on number of available procs
             args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD,
                               UBD, fopt, xopt)
         else:
-
-            n_proc = comm.size - 1
-            if n_proc < 2:
-                comm = None
-                n_proc = 1
 
             # Start with 1 node.
             args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
