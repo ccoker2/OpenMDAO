@@ -30,7 +30,7 @@ from openmdao.core.driver import Driver
 from openmdao.core.mpi_wrap import debug
 from openmdao.surrogate_models.kriging import KrigingSurrogate
 from openmdao.test.util import set_pyoptsparse_opt
-from openmdao.util.concurrent import concurrent_eval
+from openmdao.util.concurrent import concurrent_eval, concurrent_eval_lb
 from openmdao.util.record_util import create_local_meta, update_local_meta
 
 # check that pyoptsparse is installed
@@ -404,20 +404,22 @@ class Branch_and_Bound(Driver):
 
         # # Initial node. This is the data structure we pass into the
         # # concurrent evaluator. TODO: wonder if we can clean this up.
-        # args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-        #         xopt, node_num)]
+        args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
+                xopt, node_num)]
 
         # Initial number of nodes based on number of available procs
-        args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                xopt)
+        #args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
+        #        xopt)
 
         while not terminate:
 
             # Branch and Bound evaluation of a set of nodes, starting with the initial one.
             # When executed in serial, only a single node is evaluted.
             cases = [(arg, None) for arg in args]
-            results = concurrent_eval(self.evaluate_node, cases,
-                                      comm, allgather=True)
+            #results = concurrent_eval(self.evaluate_node, cases,
+            #                          comm, allgather=True)
+            results = concurrent_eval_lb(self.evaluate_node, cases,
+                                         comm, broadcast=True)
 
             # Put all the new nodes into active set.
             for result in results:
