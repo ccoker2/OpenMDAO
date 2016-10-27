@@ -80,7 +80,7 @@ class ScipyOptimizer(Driver):
         self.metadata = None
         self._problem = None
         self.result = None
-        self.exit_flag = 0
+        self.success = False
         self.grad_cache = None
         self.con_cache = None
         self.con_idx = OrderedDict()
@@ -213,7 +213,7 @@ class ScipyOptimizer(Driver):
 
         self._problem = None
         self.result = result
-        self.exit_flag = 1 if self.result.success else 0
+        self.success = True if self.result.success else False
 
         if self.options['disp']:
             print('Optimization Complete')

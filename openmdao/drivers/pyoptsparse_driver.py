@@ -64,8 +64,6 @@ class pyOptSparseDriver(Driver):
 
     Options
     -------
-    options['exit_flag'] :  int(0)
-        0 for fail, 1 for ok
     options['optimizer'] :  str('SLSQP')
         Name of optimizers to use
     options['print_results'] :  bool(True)
@@ -114,7 +112,7 @@ class pyOptSparseDriver(Driver):
         self.lin_jacs = OrderedDict()
         self.quantities = []
         self.metadata = None
-        self.exit_flag = 0
+        self.success = False
         self._problem = None
         self.sparsity = OrderedDict()
         self.sub_sparsity = OrderedDict()
@@ -336,11 +334,11 @@ class pyOptSparseDriver(Driver):
         self.pyopt_solution = sol
         try:
             exit_status = sol.optInform['value']
-            self.exit_flag = 1
+            self.success = True
             if exit_status > 2: # bad
-                self.exit_flag = 0
+                self.success = False
         except KeyError: #nothing is here, so something bad happened!
-            self.exit_flag = 0
+            self.success = False
 
     def _build_sparse(self, name, wrt, consize, param_vals, sub_param_conns,
                       full_param_conns, rels):

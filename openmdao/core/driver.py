@@ -64,6 +64,10 @@ class Driver(object):
         self.dv_conversions = {}
         self.fn_conversions = {}
 
+        # So that a driver can report failure in any multi-driver
+        # configuration.
+        self.success = True
+
     def _setup(self):
         """ Updates metadata for params, constraints and objectives, and
         check for errors. Also determines all variables that need to be
