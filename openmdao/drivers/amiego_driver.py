@@ -221,7 +221,7 @@ class AMIEGO_driver(Driver):
         for i_train in range(n_train):
 
             xx_i = np.empty((self.i_size, ))
-            xx_i_hat = np.empty((self.i_size, ))
+            # xx_i_hat = np.empty((self.i_size, ))
             for var in self.i_dvs:
                 lower = self._desvars[var]['lower']
                 upper = self._desvars[var]['upper']
@@ -229,9 +229,9 @@ class AMIEGO_driver(Driver):
                 x_i_0 = self.sampling[var][i_train, :] #Samples should be bounded in an unit hypercube [0,1]
 
                 xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower))
-                xx_i_hat[i:j] = (xx_i[i:j] - lower)/(upper - lower)
+                # xx_i_hat[i:j] = (xx_i[i:j] - lower)/(upper - lower)
             x_i.append(xx_i)
-            x_i_hat.append(xx_i_hat)
+            # x_i_hat.append(xx_i_hat)
 
         # Need to cache the continuous desvars so that we start each new
         # optimziation back at the original initial condition.
@@ -273,7 +273,7 @@ class AMIEGO_driver(Driver):
 
                 # Optimize continuous variables
                 cont_opt.run(problem)
-                cont_success = cont_opt.success
+                eflag_conopt = cont_opt.success
 
                 # Get objectives and constraints (TODO)
                 current_objs = self.get_objectives()
@@ -284,9 +284,8 @@ class AMIEGO_driver(Driver):
                     cons[name].append(value.copy())
 
                 # If best solution, save it
-                if cont_success and current_obj < best_obj:
+                if eflag_conopt and current_obj < best_obj:
                     best_obj = current_obj
-
                     # Save integer and continuous DV
                     desvars = self.get_desvars()
                     best_int_design = {}
@@ -308,13 +307,14 @@ class AMIEGO_driver(Driver):
             #------------------------------------------------------------------
             obj_surrogate = self.surrogate()
             obj_surrogate.use_snopt = True
-            obj_surrogate.train(x_i_hat, obj, normalize=False)
+            obj_surrogate.train(x_i, obj, True)
 
             obj_surrogate.y = obj
             obj_surrogate.lb_org = xI_lb
             obj_surrogate.ub_org = xI_ub
             obj_surrogate.lb = np.zeros((n_i))
             obj_surrogate.ub = np.zeros((n_i))
+            best_obj_norm = (best_obj - obj_surrogate.Y_mean)/obj_surrogate.Y_std
 
             con_surrogate = []
             for name, val in iteritems(cons):
@@ -335,7 +335,7 @@ class AMIEGO_driver(Driver):
                     con_surr = self.surrogate()
                     con_surr.use_snopt = True
 
-                    con_surr.train(x_i_hat, val[:, j:j+1], normalize=False)
+                    con_surr.train(x_i, val[:, j:j+1], True)
 
                     con_surr.y = val[:, j:j+1]
                     con_surr._name = name
@@ -380,7 +380,7 @@ class AMIEGO_driver(Driver):
 
                 if eflag_MINLPBB >= 1:
 
-                    x0I_hat = (x0I - xI_lb)/(xI_ub - xI_lb)
+                    # x0I_hat = (x0I - xI_lb)/(xI_ub - xI_lb)
 
                     ei_max = -ei_min
                     tot_pt_prev = tot_newpt_added
@@ -401,7 +401,7 @@ class AMIEGO_driver(Driver):
                             ec2 = 1
                             break
                     x_i.append(x0I)
-                    x_i_hat.append(x0I_hat)
+                    # x_i_hat.append(x0I_hat)
 
                 else:
                     ec2 = 1
@@ -415,12 +415,12 @@ class AMIEGO_driver(Driver):
             c_start = c_end
             c_end += 1
 
-            # 1e-6 is the switchover from rel to abs.
-            if np.abs(best_obj)<= 1.0e-6:
-                term = ei_tol_abs
-            else:
-                term = np.max(np.array([np.abs(ei_tol_rel*best_obj), ei_tol_abs]))
-
+            # # 1e-6 is the switchover from rel to abs.
+            # if np.abs(best_obj)<= 1.0e-6:
+            #     term = ei_tol_abs
+            # else:
+            #     term = np.max(np.array([np.abs(ei_tol_rel*best_obj), ei_tol_abs]))
+            term  = np.abs(ei_tol_rel*best_obj_norm)
             if ei_max <= term or ec2 == 1 or tot_newpt_added >= max_pt_lim:
                 terminate = True
                 if disp:

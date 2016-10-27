@@ -184,6 +184,10 @@ class Branch_and_Bound(Driver):
         # Declare stuff we need to pass to objective callback functions
         self.current_surr = None
 
+        # Experimental Options. TODO: could go into Options
+        self.load_balance = True
+        self.aggressive_splitting = True
+
     def _setup(self):
         """  Initialize whatever we need."""
         super(Branch_and_Bound, self)._setup()
@@ -338,7 +342,7 @@ class Branch_and_Bound(Driver):
             # obj_surrogate.c_r = np.dot(R_inv,(obj_surrogate.Y-one*obj_surrogate.mu))
 
             ## This is also done in Ameigo. TODO: just do it once.
-            obj_surrogate.y_best = np.min(obj_surrogate.Y)
+            obj_surrogate.y_best = np.min(obj_surrogate.Y) #TODO If you are using Y value from obj_surrogate, no need to normalize in the calc_conEI_norm function
 
             ## This is the rest of the interface that any "surrogate" needs to contain.
             ##obj_surrogate.X = surrogate.X
@@ -378,11 +382,10 @@ class Branch_and_Bound(Driver):
 
         # Initial optimal objective and solution
         # Randomly generate an integer point
-        # TODO Generate a different random number across each dim
-        #xopt = np.round(xL_iter + uniform(0,1)*(xU_iter - xL_iter)).reshape(num_des)
+        # TODO Generate as many random points as number of design variables
         xopt = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter)).reshape(num_des)
         # Use this one for verification against matlab
-        #xopt = 2.0*np.ones((num_des))
+        # xopt = 2.0*np.ones((num_des))
         fopt = self.objective_callback(xopt)
         self.eflag_MINLPBB = True
         UBD = fopt
@@ -395,31 +398,42 @@ class Branch_and_Bound(Driver):
         # Each node is a list.
         active_set = []
 
-        # Number of nodes to evaluate concurrently
+        # Initial node. This is the data structure we pass into the
+        # concurrent evaluator. TODO: wonder if we can clean this up.
         comm = problem.root.comm
-        n_proc = comm.size - 1
-        if n_proc < 2:
-            comm = None
-            n_proc = 1
+        if self.aggressive_splitting:
 
-        # # Initial node. This is the data structure we pass into the
-        # # concurrent evaluator. TODO: wonder if we can clean this up.
-        args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
+            n_proc = comm.size
+            if n_proc < 2:
+                comm = None
+
+            # Initial number of nodes based on number of available procs
+            args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD,
+                              UBD, fopt, xopt)
+        else:
+
+            n_proc = comm.size - 1
+            if n_proc < 2:
+                comm = None
+                n_proc = 1
+
+            # Start with 1 node.
+            args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
                 xopt, node_num)]
 
-        # Initial number of nodes based on number of available procs
-        #args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-        #        xopt)
-
+        # Main Loop
         while not terminate:
 
             # Branch and Bound evaluation of a set of nodes, starting with the initial one.
             # When executed in serial, only a single node is evaluted.
             cases = [(arg, None) for arg in args]
-            #results = concurrent_eval(self.evaluate_node, cases,
-            #                          comm, allgather=True)
-            results = concurrent_eval_lb(self.evaluate_node, cases,
-                                         comm, broadcast=True)
+
+            if self.load_balance:
+                results = concurrent_eval_lb(self.evaluate_node, cases,
+                                             comm, broadcast=True)
+            else:
+                results = concurrent_eval(self.evaluate_node, cases,
+                                          comm, allgather=True)
 
             # Put all the new nodes into active set.
             for result in results:
@@ -674,6 +688,7 @@ class Branch_and_Bound(Driver):
         if self.standalone:
             if self.options['use_surrogate']:
 
+                #FIXME : This will change if used standalone
                 x0I_hat = (xI - self.xI_lb)/(self.xI_ub - self.xI_lb).reshape((len(xI), 1))
 
                 f = obj_surrogate.predict(x0I_hat, normalize=False)[0]
@@ -692,8 +707,8 @@ class Branch_and_Bound(Driver):
             ub = obj_surrogate.ub
 
             # Normalized as per the convention in Kriging of openmdao
-            #xval = (xI - obj_surrogate.X_mean)/obj_surrogate.X_std
-            xval = (xI - obj_surrogate.lb_org.flatten())/(obj_surrogate.ub_org.flatten() - obj_surrogate.lb_org.flatten())
+            xval = (xI - obj_surrogate.X_mean.flatten())/obj_surrogate.X_std.flatten()
+            # xval = (xI - obj_surrogate.lb_org.flatten())/(obj_surrogate.ub_org.flatten() - obj_surrogate.lb_org.flatten())
 
 
             NegEI = calc_conEI_norm(xval, obj_surrogate)
@@ -1084,14 +1099,14 @@ def gen_coeff_bound(xI_lb, xI_ub, surrogate):
     """
 
     #Normalized to 0-1 hypercube
-    xL_hat0 = (xI_lb - surrogate.lb_org.flatten())/(surrogate.ub_org.flatten() - surrogate.lb_org.flatten())
-    xU_hat0 = (xI_ub - surrogate.lb_org.flatten())/(surrogate.ub_org.flatten() - surrogate.lb_org.flatten())
-    xL_hat = xL_hat0
-    xU_hat = xU_hat0
+    # xL_hat0 = (xI_lb - surrogate.lb_org.flatten())/(surrogate.ub_org.flatten() - surrogate.lb_org.flatten())
+    # xU_hat0 = (xI_ub - surrogate.lb_org.flatten())/(surrogate.ub_org.flatten() - surrogate.lb_org.flatten())
+    # xL_hat = xL_hat0
+    # xU_hat = xU_hat0
 
     #Normalized as per Openmdao kriging model
-    #xL_hat = (xI_lb - surrogate.X_mean)/surrogate.X_std
-    #xU_hat = (xI_ub - surrogate.X_mean)/surrogate.X_std
+    xL_hat = (xI_lb - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
+    xU_hat = (xI_ub - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
 
     rL, rU = interval_analysis(xL_hat, xU_hat, surrogate)
 
@@ -1218,8 +1233,8 @@ def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
     """This function evaluates the expected improvement in the normalized
     design space.
     """
-    #y_min = (obj_surrogate.y_best - obj_surrogate.Y_mean)/obj_surrogate.Y_std
-    y_min = obj_surrogate.y_best
+    # y_min = (obj_surrogate.y_best - obj_surrogate.Y_mean)/obj_surrogate.Y_std
+    y_min = obj_surrogate.y_best #Ensure y_min is the minimum of the y used to train the surrogates (i.e centered/scaled/normalized y)
 
     if SSqr is None:
         X = obj_surrogate.X
@@ -1255,7 +1270,7 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
     """This modules evaluates the expected improvement in the normalized
     design sapce"""
 
-    g_min = 1.0e-6
+    g_min = (1.0e-6 - con_surrogate.Y_mean)/con_surrogate.Y_std
 
     if gSSqr is None:
         X = con_surrogate.X
