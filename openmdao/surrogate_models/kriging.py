@@ -99,7 +99,10 @@ class KrigingSurrogate(SurrogateModel):
         self.use_snopt = False
         self.eval_rmse = eval_rmse
 
-    def train(self, x, y):
+        self.Wstar = np.identity(0)
+        self.pcom=0
+
+    def train(self, x, y, KPLS_status=False):
         """
         Train the surrogate model with the given set of inputs and outputs.
 
@@ -111,9 +114,9 @@ class KrigingSurrogate(SurrogateModel):
         y : array-like
             Model responses at given inputs.
 
-        normalize : bool
-            Normalize the training data to lie on [-1, 1]. Default is True, but
-            some applications like Branch and Bound require False.
+        KPLS_status : Boolean
+            False when KPLS is not added to Kriging (default)
+            True Adds KPLS method to Kriging to reduce the number of hyper-parameters
         """
 
         super(KrigingSurrogate, self).train(x, y)
@@ -144,18 +147,26 @@ class KrigingSurrogate(SurrogateModel):
         self.X_mean, self.X_std = X_mean, X_std
         self.Y_mean, self.Y_std = Y_mean, Y_std
 
-        # Multi-start approach (starting from 3 different locations) #TODO May be we want to parallelize this
+        if KPLS_status:
+            pcom_max = 3 #Maximum number of hyper-parameters we want to afford
+            self.pcom = min([pcom_max,self.n_dims]) #TODO Use some criteria to find optimal number of hyper-parameters.
+            self.Wstar = self.KPLS_reg()
+        else:
+            self.Wstar = np.identity(self.n_dims)
+            self.pcom = self.n_dims
+
+        # Multi-start approach (starting from 3 different locations) #TODO May want to parallelize this
         best_loglike = np.inf
         wt = np.array([0.25,0.5,0.75])
         for ii in range(len(wt)):
-            x0 = -3.0*np.ones([self.n_dims, 1]) + wt[ii]*(5.0*np.ones([self.n_dims, 1]))
+            x0 = -3.0*np.ones([self.pcom, 1]) + wt[ii]*(5.0*np.ones([self.pcom, 1]))
             if self.use_snopt:
                 def _calcll(dv_dict):
                     """ Callback function"""
                     fail = 0
                     thetas = dv_dict['thetas']
-
-                    loglike = self._calculate_reduced_likelihood_params(10**thetas)[0]
+                    x = np.dot((self.Wstar**2),(10**thetas).T).flatten()
+                    loglike = self._calculate_reduced_likelihood_params(x)[0]
 
                     # Objective
                     func_dict = {}
@@ -163,8 +174,8 @@ class KrigingSurrogate(SurrogateModel):
 
                     return func_dict, fail
 
-                low = -3.0*np.ones([self.n_dims, 1])
-                high = 2.0*np.ones([self.n_dims, 1])
+                low = -3.0*np.ones([self.pcom, 1])
+                high = 2.0*np.ones([self.pcom, 1])
                 # print("Using SNOPT!")
                 opt_x, opt_f, succ_flag, msg = snopt_opt(_calcll, x0, low, high, title='kriging',
                                                          options={'Major optimality tolerance' : 1.0e-6})
@@ -179,10 +190,11 @@ class KrigingSurrogate(SurrogateModel):
 
                 def _calcll(thetas):
                     """ Callback function"""
-                    loglike = self._calculate_reduced_likelihood_params(10**thetas)[0]
+                    x = np.dot((self.Wstar**2),(10**thetas).T).flatten()
+                    loglike = self._calculate_reduced_likelihood_params(x)[0]
                     return -loglike
 
-                bounds = [(-3.0, 2.0) for _ in range(self.n_dims)]
+                bounds = [(-3.0, 2.0) for _ in range(self.pcom)]
                 # print("Using Cobyla")
                 optResult = minimize(_calcll, x0, method='cobyla',
                                      options={'ftol': 1e-6},
@@ -197,7 +209,7 @@ class KrigingSurrogate(SurrogateModel):
 
             if best_loglike > fval:
                 best_loglike = fval*1.0
-                self.thetas = thetas
+                self.thetas = np.dot((self.Wstar**2),thetas.T).flatten()
 
         _, params = self._calculate_reduced_likelihood_params()
         self.c_r = params['c_r']
@@ -336,6 +348,41 @@ class KrigingSurrogate(SurrogateModel):
         jac = np.einsum('i,j,ij->ij', self.Y_std, 1./self.X_std, gradr.dot(self.c_r).T)
         return jac
 
+    def KPLS_reg(self):
+        def power_iter(X,y):
+            A = np.dot(np.dot(X.T,y),np.dot(y.T,X))
+            qk = np.zeros([A.shape[0],1])
+            qk[0] = 1.0
+            kk=0.
+            delta = 1.0
+            qk_prev = qk
+            while delta>1.0e-6:
+                kk = kk + 1.
+                zk = np.dot(A,qk)
+                qk = zk/np.linalg.norm(zk)
+                delta = np.linalg.norm(qk - qk_prev)
+                qk_prev = qk
+            return qk
+
+        Xl = self.X
+        yl = self.Y
+        k = self.n_dims
+        for l in range(self.pcom):
+            wl = power_iter(Xl,yl)
+            tl = np.dot(Xl,wl)
+            tl_hat = tl/(np.dot(tl.T,tl))
+            pl = (np.dot(Xl.T,tl_hat)).T
+            cl = np.dot(yl.T,tl_hat)
+            if l == 0: #FIXME: Re-code this
+                W = wl*1.0
+                P = pl.T*1.0
+            else:
+                W = np.concatenate((W,wl), axis=1)
+                P = np.concatenate((P,pl.T), axis=1)
+            Xl = Xl - np.dot(tl,pl)
+            yl = yl - cl*tl
+        Wstar = np.dot(W,np.linalg.inv(np.dot(P.T,W))) #TODO: See if there are better ways to do inverse
+        return Wstar
 
 class FloatKrigingSurrogate(KrigingSurrogate):
     """Surrogate model based on the simple Kriging interpolation. Predictions are returned as floats,

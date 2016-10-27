@@ -378,11 +378,10 @@ class Branch_and_Bound(Driver):
 
         # Initial optimal objective and solution
         # Randomly generate an integer point
-        # TODO Generate a different random number across each dim
-        #xopt = np.round(xL_iter + uniform(0,1)*(xU_iter - xL_iter)).reshape(num_des)
+        # TODO Generate as many random points as number of design variables
         xopt = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter)).reshape(num_des)
         # Use this one for verification against matlab
-        #xopt = 2.0*np.ones((num_des))
+        # xopt = 2.0*np.ones((num_des))
         fopt = self.objective_callback(xopt)
         self.eflag_MINLPBB = True
         UBD = fopt
@@ -404,12 +403,12 @@ class Branch_and_Bound(Driver):
 
         # # Initial node. This is the data structure we pass into the
         # # concurrent evaluator. TODO: wonder if we can clean this up.
-        args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                xopt, node_num)]
+        # args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
+        #         xopt, node_num)]
 
         # # Initial number of nodes based on number of available procs
-        # args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-        #         xopt)
+        args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
+                xopt)
 
         while not terminate:
 

@@ -307,7 +307,7 @@ class AMIEGO_driver(Driver):
             #------------------------------------------------------------------
             obj_surrogate = self.surrogate()
             obj_surrogate.use_snopt = True
-            obj_surrogate.train(x_i, obj)
+            obj_surrogate.train(x_i, obj, True)
 
             obj_surrogate.y = obj
             obj_surrogate.lb_org = xI_lb
@@ -335,7 +335,7 @@ class AMIEGO_driver(Driver):
                     con_surr = self.surrogate()
                     con_surr.use_snopt = True
 
-                    con_surr.train(x_i, val[:, j:j+1])
+                    con_surr.train(x_i, val[:, j:j+1], True)
 
                     con_surr.y = val[:, j:j+1]
                     con_surr._name = name
