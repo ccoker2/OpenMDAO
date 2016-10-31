@@ -27,7 +27,7 @@ from scipy.optimize import minimize
 from scipy.special import erf
 
 from openmdao.core.driver import Driver
-from openmdao.core.mpi_wrap import debug
+from openmdao.core.mpi_wrap import debug, FakeComm
 from openmdao.surrogate_models.kriging import KrigingSurrogate
 from openmdao.test.util import set_pyoptsparse_opt
 from openmdao.util.concurrent import concurrent_eval, concurrent_eval_lb
@@ -37,23 +37,6 @@ from openmdao.util.record_util import create_local_meta, update_local_meta
 # if it is, try to use SNOPT but fall back to SLSQP
 OPT, OPTIMIZER = set_pyoptsparse_opt('SNOPT')
 
-class DummyComm(object):
-    """ Do-nothing communicator for pyoptsparse so that we can run it
-    independently on each process."""
-
-    rank = 0
-
-    def gather(self, name, root=None):
-        """ Signature for gather"""
-        return name
-
-    def bcast(self, name, root=None):
-        """ Signature for bcast"""
-        return name
-
-    def recv(self, name, tag=None):
-        """ Signature for recv"""
-        return name
 
 def snopt_opt(objfun, desvar, lb, ub, ncon, title=None, options=None,
               sens=None, jac=None):
@@ -65,7 +48,7 @@ def snopt_opt(objfun, desvar, lb, ub, ncon, title=None, options=None,
     else:
         raise(RuntimeError, 'Need pyoptsparse to run the SNOPT sub optimizer.')
 
-    opt_prob = Optimization(title, objfun, comm=DummyComm())
+    opt_prob = Optimization(title, objfun, comm=FakeComm())
 
     ndv = len(desvar)
 
