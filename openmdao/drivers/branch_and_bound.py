@@ -62,7 +62,6 @@ def snopt_opt(objfun, desvar, lb, ub, ncon, title=None, options=None,
     _tmp = __import__('pyoptsparse', globals(), locals(), [OPTIMIZER], 0)
     opt = getattr(_tmp, OPTIMIZER)()
 
-
     if options:
         for name, value in iteritems(options):
             opt.setOption(name, value)
@@ -505,8 +504,9 @@ class Branch_and_Bound(Driver):
 
     def evaluate_node(self, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD,
                       fopt, xopt, node_num):
-        """ Branch and Bound step on a single node. This function
-        encapsulates the portion of the code that runs in parallel."""
+        """Branch and Bound step on a single node. This function
+        encapsulates the portion of the code that runs in parallel.
+        """
 
         active_tol = self.options['active_tol']
         local_search = self.options['local_search']
