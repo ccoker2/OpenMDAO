@@ -296,7 +296,7 @@ class Branch_and_Bound(Driver):
 
             self.obj_surrogate = obj_surrogate = self.surrogate()
             obj_surrogate.use_snopt = True
-            obj_surrogate.train(x_i_hat, obj, normalize=False)
+            obj_surrogate.train(x_i_hat, obj, KPLS_status=True)
             obj_surrogate.y = obj
             obj_surrogate.lb_org = self.xI_lb
             obj_surrogate.ub_org = self.xI_ub
@@ -697,7 +697,7 @@ class Branch_and_Bound(Driver):
                 #FIXME : This will change if used standalone
                 x0I_hat = (xI - self.xI_lb)/(self.xI_ub - self.xI_lb).reshape((len(xI), 1))
 
-                f = obj_surrogate.predict(x0I_hat, normalize=False)[0]
+                f = obj_surrogate.predict(x0I_hat)[0]
 
             else:
                 raise NotImplementedError()

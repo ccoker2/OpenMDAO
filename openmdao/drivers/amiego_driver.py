@@ -307,7 +307,7 @@ class AMIEGO_driver(Driver):
             #------------------------------------------------------------------
             obj_surrogate = self.surrogate()
             obj_surrogate.use_snopt = True
-            obj_surrogate.train(x_i, obj, True)
+            obj_surrogate.train(x_i, obj, KPLS_status=True)
 
             obj_surrogate.y = obj
             obj_surrogate.lb_org = xI_lb
