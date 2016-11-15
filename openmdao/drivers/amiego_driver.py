@@ -60,7 +60,7 @@ class AMIEGO_driver(Driver):
         self.supports['inequality_constraints'] = True
         self.supports['equality_constraints'] = False
         self.supports['multiple_objectives'] = False
-        self.supports['two_sided_constraints'] = False
+        self.supports['two_sided_constraints'] = True
         self.supports['active_set'] = False
         self.supports['linear_constraints'] = False
         self.supports['gradients'] = True
@@ -358,18 +358,28 @@ class AMIEGO_driver(Driver):
                 meta = self._cons[name]
                 upper = meta['upper']
                 lower = meta['lower']
+                double_sided = False
                 if lower is None:
                     val = val - upper
-                else:
+                elif upper is None:
                     val = lower - val
+                else:
+                    double_sided = True
+                    val_u = val - upper
+                    val_l = lower - val
 
                 for j in range(val.shape[1]):
                     con_surr = self.surrogate()
                     con_surr.use_snopt = True
 
-                    con_surr.train(x_i, val[:, j:j+1], True)
+                    if double_sided:
+                        val_idx = max(val_u[:, j:j+1], val_l[:, j:j+1])
+                    else:
+                        val_idx = val[:, j:j+1]
 
-                    con_surr.y = val[:, j:j+1]
+                    con_surr.train(x_i, val_idx, True)
+
+                    con_surr.y = val_idx
                     con_surr._name = name
                     con_surr.lb_org = xI_lb
                     con_surr.ub_org = xI_ub
