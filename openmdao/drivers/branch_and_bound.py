@@ -1244,7 +1244,7 @@ def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
         SSqr = SigmaSqr*(1.0 - r.T.dot(term0) + \
         ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
 
-    if abs(SSqr) == 0.0:
+    if abs(SSqr) <= 1.0e-6:
         NegEI = 0.0
     else:
         dy = y_min - y_hat
@@ -1279,7 +1279,7 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
         gSSqr = SigmaSqr*(1.0 - r.T.dot(term0) + \
                           ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
 
-    if abs(gSSqr) == 0.0:
+    if abs(gSSqr) <= 1.0e-6:
         EV = 0.0
     else:
         # Calculate expected violation
