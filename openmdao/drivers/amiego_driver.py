@@ -99,6 +99,12 @@ class AMIEGO_driver(Driver):
         # TODO: Somehow slot an object that generates this (LHC for example)
         self.sampling = {}
 
+        # User can pre-load these to skip initial continuous optimization
+        # in favor of pre-optimized points.
+        # NOTE: when running in this mode, everything comes in as lists.
+        self.obj_sampling = None
+        self.con_sampling = None
+
     def _setup(self):
         """  Initialize whatever we need."""
         super(AMIEGO_driver, self)._setup()
@@ -204,7 +210,6 @@ class AMIEGO_driver(Driver):
         # User supplied (in future use LHS). Provide num_xI+2 starting points
         #----------------------------------------------------------------------
 
-        n_train = self.sampling[self.i_dvs[0]].shape[0]
         max_pt_lim = self.options['max_infill_points']*n_i
 
         # Since we need to add a new point every iteration, make these lists
@@ -215,26 +220,53 @@ class AMIEGO_driver(Driver):
         cons = {}
         for con in self.get_constraint_metadata():
             cons[con] = []
-        c_start = 0
-        c_end = n_train
 
-        for i_train in range(n_train):
+        # Start with pre-optimized samples
+        if self.obj_sampling:
+            pre_opt = True
+            n_train = len(self.sampling[self.i_dvs[0]])
+            c_start = c_end = n_train
 
-            xx_i = np.empty((self.i_size, ))
-            # xx_i_hat = np.empty((self.i_size, ))
-            for var in self.i_dvs:
-                lower = self._desvars[var]['lower']
-                upper = self._desvars[var]['upper']
-                i, j = self.i_idx[var]
-                x_i_0 = self.sampling[var][i_train, :] #Samples should be bounded in an unit hypercube [0,1]
+            for i_train in range(n_train):
 
-                xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower))
-                # xx_i_hat[i:j] = (xx_i[i:j] - lower)/(upper - lower)
-            x_i.append(xx_i)
-            # x_i_hat.append(xx_i_hat)
+                xx_i = np.empty((self.i_size, ))
+                for var in self.i_dvs:
+                    i, j = self.i_idx[var]
+                    xx_i[i:j] = self.sampling[var][i_train]
+
+                x_i.append(xx_i)
+
+            current_objs = self.get_objectives()
+            obj_name = list(current_objs.keys())[0]
+            obj = self.obj_sampling[obj_name]
+            cons = self.con_sampling
+
+        # Prepare to optimize the initial sampling points
+        else:
+            pre_opt = False
+            n_train = self.sampling[self.i_dvs[0]].shape[0]
+            c_start = 0
+            c_end = n_train
+
+            for i_train in range(n_train):
+
+                xx_i = np.empty((self.i_size, ))
+                # xx_i_hat = np.empty((self.i_size, ))
+                for var in self.i_dvs:
+                    lower = self._desvars[var]['lower']
+                    upper = self._desvars[var]['upper']
+                    i, j = self.i_idx[var]
+
+                    #Samples should be bounded in an unit hypercube [0,1]
+                    x_i_0 = self.sampling[var][i_train, :]
+
+                    xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower))
+                    # xx_i_hat[i:j] = (xx_i[i:j] - lower)/(upper - lower)
+                x_i.append(xx_i)
+                # x_i_hat.append(xx_i_hat)
 
         # Need to cache the continuous desvars so that we start each new
-        # optimziation back at the original initial condition.
+        # optimization back at the original initial condition.
         xc_cache = {}
         desvars = cont_opt.get_desvars()
         for var, val in iteritems(desvars):
@@ -358,7 +390,7 @@ class AMIEGO_driver(Driver):
                 print("The best solution so far: yopt = %0.4f" % best_obj)
 
             tot_newpt_added += c_end - c_start
-            if tot_newpt_added != tot_pt_prev:
+            if pre_opt or tot_newpt_added != tot_pt_prev:
 
                 minlp.obj_surrogate = obj_surrogate
                 minlp.con_surrogate = con_surrogate
@@ -421,7 +453,7 @@ class AMIEGO_driver(Driver):
             # else:
             #     term = np.max(np.array([np.abs(ei_tol_rel*best_obj), ei_tol_abs]))
             term  = np.abs(ei_tol_rel*best_obj_norm)
-            if ei_max <= term or ec2 == 1 or tot_newpt_added >= max_pt_lim:
+            if (not pre_opt and ei_max <= term) or ec2 == 1 or tot_newpt_added >= max_pt_lim:
                 terminate = True
                 if disp:
                     if ei_max <= term:
@@ -430,6 +462,8 @@ class AMIEGO_driver(Driver):
                         print("No new point found that improves the surrogate. Terminating algorithm.")
                     elif tot_newpt_added >= max_pt_lim:
                         print("Maximum allowed sampling limit reached! Terminating algorithm.")
+
+            pre_opt = False
 
         # Pull optimal parameters back into framework and re-run, so that
         # framework is left in the right final state

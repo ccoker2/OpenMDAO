@@ -130,6 +130,59 @@ class TestAMIEGOdriver(unittest.TestCase):
         assert_rel_error(self, prob['mat'][1], 3, 1e-5)
         # Material 3 can be anything
 
+    def test_three_bar_truss_preopt(self):
+
+        prob = Problem()
+        root = prob.root = Group()
+
+        root.add('xc_a', IndepVarComp('area', np.array([5.0, 5.0, 5.0])), promotes=['*'])
+        root.add('xi_m', IndepVarComp('mat', np.array([1, 1, 1])), promotes=['*'])
+        root.add('comp', ThreeBarTrussVector(), promotes=['*'])
+
+        prob.driver = AMIEGO_driver()
+        prob.driver.cont_opt.options['tol'] = 1e-12
+        #prob.driver.options['disp'] = False
+        root.deriv_options['type'] = 'fd'
+        prob.driver.cont_opt = pyOptSparseDriver()
+        prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
+
+        prob.driver.add_desvar('area', lower=0.0005, upper=10.0)
+        prob.driver.add_desvar('mat', lower=1, upper=4)
+        prob.driver.add_objective('mass')
+        prob.driver.add_constraint('stress', upper=1.0)
+
+        npt = 5
+        samples = [np.array([ 4.,  2.,  3.]),
+                   np.array([ 1.,  3.,  1.]),
+                   np.array([ 3.,  1.,  2.]),
+                   np.array([ 3.,  4.,  2.]),
+                   np.array([ 2.,  2.,  4.])]
+
+        obj_samples = [np.array([ 20.33476318]),
+                       np.array([ 15.70506904]),
+                       np.array([ 11.400119]),
+                       np.array([ 13.86862844]),
+                       np.array([ 6.15312764])]
+
+        con_samples = [np.array([ 1.21567329,  0.41459045,  0.11071787]),
+                       np.array([ 1.00000067,  0.37435478,  0.35066873]),
+                       np.array([ 0.49384779,  1.        ,  0.09501302]),
+                       np.array([ 1.00000027,  1.00000001,  0.91702834]),
+                       np.array([  1.00000000e+00,   1.00000000e+00,   1.39230610e-08])]
+
+        prob.driver.sampling = {'mat' : samples}
+        prob.driver.obj_sampling = {'mass' : obj_samples}
+        prob.driver.con_sampling = {'stress' : con_samples}
+
+        prob.setup(check=False)
+
+        prob.run()
+
+        assert_rel_error(self, prob['mass'], 5.287, 1e-3)
+        assert_rel_error(self, prob['mat'][0], 3, 1e-5)
+        assert_rel_error(self, prob['mat'][1], 3, 1e-5)
+        # Material 3 can be anything
+
     def test_simple_greiwank_opt(self):
 
         prob = Problem()
