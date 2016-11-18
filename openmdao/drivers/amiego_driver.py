@@ -60,11 +60,13 @@ class AMIEGO_driver(Driver):
         self.supports['inequality_constraints'] = True
         self.supports['equality_constraints'] = False
         self.supports['multiple_objectives'] = False
-        self.supports['two_sided_constraints'] = True
         self.supports['active_set'] = False
         self.supports['linear_constraints'] = False
         self.supports['gradients'] = True
         self.supports['mixed_integer'] = True
+
+        # TODO - I started working on this, but needs tests and a bug fix
+        self.supports['two_sided_constraints'] = False
 
         # Options
         opt = self.options
@@ -241,8 +243,13 @@ class AMIEGO_driver(Driver):
             obj = self.obj_sampling[obj_name]
             cons = self.con_sampling
 
+            # Satadru's suggestion is that we start with the first point as
+            # the best obj.
+            best_obj = obj[0].copy()
+
         # Prepare to optimize the initial sampling points
         else:
+            best_obj = 1.0e99
             pre_opt = False
             n_train = self.sampling[self.i_dvs[0]].shape[0]
             c_start = 0
@@ -277,7 +284,6 @@ class AMIEGO_driver(Driver):
         terminate = False
         tot_newpt_added = 0
         tot_pt_prev = 0
-        best_obj = 1.0e99
         ec2 = 0
 
         # AMIEGO main loop

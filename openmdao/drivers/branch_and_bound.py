@@ -132,6 +132,8 @@ class Branch_and_Bound(Driver):
                        'messages.')
         opt.add_option('ftol', 1.0e-4, lower=0.0,
                        desc='Absolute tolerance for sub-optimizations.')
+        opt.add_option('maxiter', 25000, lower=0.0,
+                       desc='Maximum number of iterations.')
         opt.add_option('use_surrogate', False,
                        desc='Use surrogate model for the optimization. Training '
                        'data must be supplied.')
@@ -219,6 +221,7 @@ class Branch_and_Bound(Driver):
         atol = self.options['atol']
         ftol = self.options['ftol']
         disp = self.options['disp']
+        maxiter = self.options['maxiter']
 
         # Metadata Setup
         self.metadata = create_local_meta(None, self.record_name)
@@ -352,6 +355,7 @@ class Branch_and_Bound(Driver):
         terminate = False
         num_des = len(self.xI_lb)
         node_num = 0
+        itercount = 0
 
         # Initial B&B bounds are infinite.
         LBD = -np.inf
@@ -423,6 +427,8 @@ class Branch_and_Bound(Driver):
                 results = concurrent_eval(self.evaluate_node, cases,
                                           comm, allgather=True)
 
+            itercount += 1
+
             # Put all the new nodes into active set.
             for result in results:
                 new_UBD, new_fopt, new_xopt, new_nodes = result[0]
@@ -485,6 +491,9 @@ class Branch_and_Bound(Driver):
                     print("="*85)
                     print("Terminating! No new node to explore.")
                     print("Max Node", node_num)
+
+            if itercount > maxiter:
+                terminate = True
 
         # Finalize by putting optimal value back into openMDAO
         if self.standalone:
