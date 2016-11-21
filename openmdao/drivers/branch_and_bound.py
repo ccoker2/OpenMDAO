@@ -427,7 +427,7 @@ class Branch_and_Bound(Driver):
                 results = concurrent_eval(self.evaluate_node, cases,
                                           comm, allgather=True)
 
-            itercount += 1
+            itercount += len(args)
 
             # Put all the new nodes into active set.
             for result in results:
