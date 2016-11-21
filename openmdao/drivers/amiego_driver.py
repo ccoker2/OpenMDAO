@@ -313,6 +313,9 @@ class AMIEGO_driver(Driver):
                 cont_opt.run(problem)
                 eflag_conopt = cont_opt.success
 
+                if not eflag_conopt:
+                    self.minlp.bad_samples.append(x_i[i_run])
+
                 # Get objectives and constraints (TODO)
                 current_objs = self.get_objectives()
                 obj_name = list(current_objs.keys())[0]

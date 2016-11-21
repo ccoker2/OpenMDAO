@@ -157,7 +157,7 @@ class KrigingSurrogate(SurrogateModel):
 
         # Multi-start approach (starting from 3 different locations) #TODO May want to parallelize this
         best_loglike = np.inf
-        wt = np.array([0.25,0.5,0.75])
+        wt = np.array([0.25, 0.5, 0.75])
         for ii in range(len(wt)):
             x0 = -3.0*np.ones([self.pcom, 1]) + wt[ii]*(5.0*np.ones([self.pcom, 1]))
             if self.use_snopt:
