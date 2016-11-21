@@ -549,7 +549,7 @@ class Branch_and_Bound(Driver):
 
                 optResult = minimize(self.objective_callback, xC_iter,
                                      method='SLSQP', bounds=bnds,
-                                     options={'ftol' : ftol})
+                                     options={'ftol' : self.options['ftol']})
 
                 xloc_iter = np.round(optResult.x.reshape(num_des))
                 floc_iter = self.objective_callback(xloc_iter)
