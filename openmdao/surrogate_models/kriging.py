@@ -156,6 +156,7 @@ class KrigingSurrogate(SurrogateModel):
             self.pcom = self.n_dims
 
         # Multi-start approach (starting from 3 different locations) #TODO May want to parallelize this
+        print("Proceeding with %d hyper-parameters" % self.pcom)
         best_loglike = np.inf
         wt = np.array([0.25,0.5,0.75])
         for ii in range(len(wt)):

@@ -13,6 +13,7 @@ Implemented in OpenMDAO, Aug 2016, Kenneth T. Moore
 
 from __future__ import print_function
 from copy import deepcopy
+from time import time
 
 from six import iteritems
 from six.moves import range
@@ -213,6 +214,8 @@ class AMIEGO_driver(Driver):
         x_i_hat = []
         obj = []
         cons = {}
+        #TODO: This is only for the AMIEGO_FLOPS
+        del_fac = 3 #Initially reduces the design space to generate samples between [0,3]. Original space is [0,6]
         for con in self.get_constraint_metadata():
             cons[con] = []
         c_start = 0
@@ -228,7 +231,7 @@ class AMIEGO_driver(Driver):
                 i, j = self.i_idx[var]
                 x_i_0 = self.sampling[var][i_train, :] #Samples should be bounded in an unit hypercube [0,1]
 
-                xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower))
+                xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower - del_fac))
                 # xx_i_hat[i:j] = (xx_i[i:j] - lower)/(upper - lower)
             x_i.append(xx_i)
             # x_i_hat.append(xx_i_hat)
@@ -274,6 +277,16 @@ class AMIEGO_driver(Driver):
                 # Optimize continuous variables
                 cont_opt.run(problem)
                 eflag_conopt = cont_opt.success
+                if disp:
+                    desvars = self.get_desvars()
+                    int_design = {}
+                    for name in self.i_dvs:
+                        val = desvars[name]
+                        if isinstance(val, _ByObjWrapper):
+                            val = val.val
+                        int_design[name] = val.copy()
+                    print("Integer inputs: ",int_design)
+                    print("Exit Flag Status: ",eflag_conopt)
 
                 # Get objectives and constraints (TODO)
                 current_objs = self.get_objectives()
@@ -367,8 +380,10 @@ class AMIEGO_driver(Driver):
 
                 if disp:
                     print("======================MINLPBB-Start=====================================")
+                    t0 = time()
                 minlp.run(problem)
                 if disp:
+                    print("Elapsed Time", time()-t0)
                     print("======================MINLPBB-End=======================================")
 
                 eflag_MINLPBB = minlp.eflag_MINLPBB

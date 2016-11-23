@@ -137,7 +137,7 @@ class Branch_and_Bound(Driver):
         opt.add_option('active_tol', 1.0e-6, lower=0.0,
                        desc='Tolerance (2-norm) for triggering active set '
                        'reduction.')
-        opt.add_option('atol', 1.0e-6, lower=0.0,
+        opt.add_option('atol', 0.1, lower=0.0,
                        desc='Absolute tolerance (inf-norm) of upper minus '
                        'lower bound for termination.')
         opt.add_option('con_tol', 1.0e-6, lower=0.0,
@@ -150,6 +150,10 @@ class Branch_and_Bound(Driver):
                        'messages.')
         opt.add_option('ftol', 1.0e-4, lower=0.0,
                        desc='Absolute tolerance for sub-optimizations.')
+        opt.add_option('maxiter', 25000, lower=0.0,
+                       desc='Maximum number of iterations.')
+        opt.add_option('maxUBDiter', 5000, lower=0.0,
+                       desc='Maximum number of iterations for which UBD stays the same.')
         opt.add_option('use_surrogate', False,
                        desc='Use surrogate model for the optimization. Training '
                        'data must be supplied.')
@@ -237,6 +241,8 @@ class Branch_and_Bound(Driver):
         atol = self.options['atol']
         ftol = self.options['ftol']
         disp = self.options['disp']
+        maxiter = self.options['maxiter']
+        maxUBDiter = self.options['maxUBDiter']
 
         # Metadata Setup
         self.metadata = create_local_meta(None, self.record_name)
@@ -370,6 +376,8 @@ class Branch_and_Bound(Driver):
         terminate = False
         num_des = len(self.xI_lb)
         node_num = 0
+        itercount = 0
+        UBDitercount = 0
 
         # Initial B&B bounds are infinite.
         LBD = -np.inf
@@ -441,6 +449,9 @@ class Branch_and_Bound(Driver):
                 results = concurrent_eval(self.evaluate_node, cases,
                                           comm, allgather=True)
 
+            itercount += len(args)
+            UBDitercount += len(args)
+
             # Put all the new nodes into active set.
             for result in results:
                 new_UBD, new_fopt, new_xopt, new_nodes = result[0]
@@ -450,6 +461,7 @@ class Branch_and_Bound(Driver):
                     UBD = new_UBD
                     fopt = new_fopt
                     xopt = new_xopt
+                    UBDitercount = 0
 
                 # TODO: Should we extend the active set with all the cases we
                 # ran, or just the best one. All for now.
@@ -503,6 +515,9 @@ class Branch_and_Bound(Driver):
                     print("="*85)
                     print("Terminating! No new node to explore.")
                     print("Max Node", node_num)
+
+            if itercount > maxiter or UBDitercount > maxUBDiter:
+                terminate = True
 
         # Finalize by putting optimal value back into openMDAO
         if self.standalone:
@@ -1261,7 +1276,7 @@ def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
         SSqr = SigmaSqr*(1.0 - r.T.dot(term0) + \
         ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
 
-    if abs(SSqr) == 0.0:
+    if abs(SSqr) <= 1.0e-6:
         NegEI = 0.0
     else:
         dy = y_min - y_hat
@@ -1296,7 +1311,7 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
         gSSqr = SigmaSqr*(1.0 - r.T.dot(term0) + \
                           ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
 
-    if abs(gSSqr) == 0.0:
+    if abs(gSSqr) <= 1.0e-6:
         EV = 0.0
     else:
         # Calculate expected violation
