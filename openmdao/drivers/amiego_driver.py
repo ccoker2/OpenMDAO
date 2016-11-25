@@ -13,6 +13,7 @@ Implemented in OpenMDAO, Aug 2016, Kenneth T. Moore
 
 from __future__ import print_function
 from copy import deepcopy
+from time import time
 
 from six import iteritems
 from six.moves import range
@@ -297,6 +298,7 @@ class AMIEGO_driver(Driver):
 
             if disp:
                 print("======================ContinuousOptimization-Start=====================================")
+                t0 = time()
 
             for i_run in range(c_start, c_end):
 
@@ -341,6 +343,7 @@ class AMIEGO_driver(Driver):
                         best_cont_design[name] = desvars[name].copy()
 
             if disp:
+                print('Elapsed Time:', time() - t0)
                 print("======================ContinuousOptimization-End=======================================")
 
             #------------------------------------------------------------------
@@ -417,9 +420,11 @@ class AMIEGO_driver(Driver):
                 minlp.xI_ub = xI_ub
 
                 if disp:
+                    t0 = time()
                     print("======================MINLPBB-Start=====================================")
                 minlp.run(problem)
                 if disp:
+                    print('Elapsed Time:', time() - t0)
                     print("======================MINLPBB-End=======================================")
 
                 eflag_MINLPBB = minlp.eflag_MINLPBB
