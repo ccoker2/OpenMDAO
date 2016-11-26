@@ -181,6 +181,7 @@ class KrigingSurrogate(SurrogateModel):
                                                          options={'Major optimality tolerance' : 1.0e-6})
 
                 if not succ_flag:
+                    print("SNOPT failed to converge.", msg)
                     pass
                     #raise ValueError('Kriging Hyper-parameter optimization failed: {0}'.format(msg))
 
@@ -201,6 +202,7 @@ class KrigingSurrogate(SurrogateModel):
                                      bounds=bounds)
 
                 if not optResult.success:
+                    print("Cobyla failed to converge", optResult.success)
                     pass
                     #raise ValueError('Kriging Hyper-parameter optimization failed: {0}'.format(optResult.message))
 

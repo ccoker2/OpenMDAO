@@ -221,6 +221,7 @@ class AMIEGO_driver(Driver):
         x_i_hat = []
         obj = []
         cons = {}
+        best_int_design = {}
         for con in self.get_constraint_metadata():
             cons[con] = []
 
@@ -236,6 +237,10 @@ class AMIEGO_driver(Driver):
                 for var in self.i_dvs:
                     i, j = self.i_idx[var]
                     xx_i[i:j] = self.sampling[var][i_train]
+
+                    # Save the best design too (see below)
+                    if i_train == 0:
+                        best_int_design[var] = self.sampling[var][i_train]
 
                 x_i.append(xx_i)
 
@@ -331,7 +336,7 @@ class AMIEGO_driver(Driver):
                     best_obj = current_obj
                     # Save integer and continuous DV
                     desvars = self.get_desvars()
-                    best_int_design = {}
+
                     for name in self.i_dvs:
                         val = desvars[name]
                         if isinstance(val, _ByObjWrapper):
