@@ -138,6 +138,8 @@ class Branch_and_Bound(Driver):
                        desc='Penalty weight on objective using radial functions.')
         opt.add_option('penalty_width', 0.5,
                        desc='Penalty width on objective using radial functions.')
+        opt.add_option('trace_iter', 10,
+                       desc='Number of generations to trace back for ubd.')
         opt.add_option('use_surrogate', False,
                        desc='Use surrogate model for the optimization. Training '
                        'data must be supplied.')
@@ -384,10 +386,11 @@ class Branch_and_Bound(Driver):
         # This stuff is just for printing.
         par_node = 0
 
-        # Active set fields:
-        #     Aset = [[NodeNumber, lb, ub, LBD, UBD], [], ..]
+        # Active set fields: (Updated!)
+        #     Aset = [[NodeNumber, lb, ub, LBD, UBD, ubd_track, ubdloc_best], [], ..]
         # Each node is a list.
         active_set = []
+        nodeHist = nodeHistclass()
 
         comm = problem.root.comm
         if self.load_balance:
@@ -411,12 +414,12 @@ class Branch_and_Bound(Driver):
 
             # Initial number of nodes based on number of available procs
             args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD,
-                              UBD, fopt, xopt)
+                              UBD, fopt, xopt, nodeHist)
         else:
 
             # Start with 1 node.
             args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                xopt, node_num)]
+                xopt, node_num, nodeHist)]
 
         # Main Loop
         while not terminate:
@@ -471,11 +474,11 @@ class Branch_and_Bound(Driver):
                     LBD_prev = LBD
 
                     # b. Select the lowest LBD node as the current node
-                    par_node, xL_iter, xU_iter, _, _ = active_set[ind_LBD]
+                    par_node, xL_iter, xU_iter, _, _, nodeHist = active_set[ind_LBD]
                     self.iter_count += 1
 
                     args.append((xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                                 xopt, node_num))
+                                 xopt, node_num, nodeHist))
 
                     # c. Delete the selected node from the Active set of nodes
                     del active_set[ind_LBD]
@@ -517,7 +520,7 @@ class Branch_and_Bound(Driver):
             self.fopt = fopt
 
     def evaluate_node(self, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD,
-                      fopt, xopt, node_num):
+                      fopt, xopt, node_num, nodeHist):
         """Branch and Bound step on a single node. This function
         encapsulates the portion of the code that runs in parallel.
         """
@@ -528,6 +531,7 @@ class Branch_and_Bound(Driver):
         obj_surrogate = self.obj_surrogate
         con_surrogate = self.con_surrogate
         num_des = len(self.xI_lb)
+        trace_iter = self.options['trace_iter']
 
         new_nodes = []
 
@@ -645,10 +649,21 @@ class Branch_and_Bound(Driver):
                 # Step 5: Store any new node inside the active set that has LBD
                 # lower than the UBD.
                 #--------------------------------------------------------------
-
+                if nodeHist.ubdloc_best > floc_iter + 1.0e-6:
+                    ubd_track = np.concatenate((nodeHist.ubd_track,1),axis=0)
+                    ubdloc_best = floc_iter
+                else:
+                    ubd_track = np.concatenate((nodeHist.ubd_track,0),axis=0)
+                if len(ubd_track) >= trace_iter and np.sum(ubd_track[-trace_iter:])==0:
+                    LBD_NegConEI = np.inf
+                print("UBD_track",ubd_track)
+                nodeHist_new = nodeHistclass()
+                nodeHist_new.ubd_track = ubd_track
+                nodeHist_new.ubdloc_best = ubdloc_best
+                
                 if LBD_NegConEI < UBD - 1.0e-6:
                     node_num += 1
-                    new_node = [node_num, lb, ub, LBD_NegConEI, floc_iter]
+                    new_node = [node_num, lb, ub, LBD_NegConEI, floc_iter, nodeHist_new]
                     new_nodes.append(new_node)
                     child_info[ii] = np.array([node_num, LBD_NegConEI, floc_iter])
                 else:
@@ -1312,7 +1327,7 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
 
     return EV
 
-def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt):
+def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, nodeHist):
     pts = (xU_iter-xL_iter) + 1.0
     com_enum = np.prod(pts, axis=0)
     tot_pts = 0.0
@@ -1352,9 +1367,14 @@ def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt):
             xL_iter, xU_iter, enum = new_nodes[ii]
             tot_pts += enum
             args.append((xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                         xopt, ii+1))
+                         xopt, ii+1, nodeHist))
     else:
         args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                xopt, 0)]
+                xopt, 0, nodeHist)]
 
     return args
+
+class nodeHistclass():
+    def __init__(self):
+        self.ubd_track = np.array([1])
+        self.ubdloc_best = np.inf
