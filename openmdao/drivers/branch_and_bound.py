@@ -119,7 +119,7 @@ class Branch_and_Bound(Driver):
         opt.add_option('active_tol', 1.0e-6, lower=0.0,
                        desc='Tolerance (2-norm) for triggering active set '
                        'reduction.')
-        opt.add_option('atol', 1.0e-6, lower=0.0,
+        opt.add_option('atol', 0.1, lower=0.0,
                        desc='Absolute tolerance (inf-norm) of upper minus '
                        'lower bound for termination.')
         opt.add_option('con_tol', 1.0e-6, lower=0.0,
@@ -132,7 +132,7 @@ class Branch_and_Bound(Driver):
                        'messages.')
         opt.add_option('ftol', 1.0e-4, lower=0.0,
                        desc='Absolute tolerance for sub-optimizations.')
-        opt.add_option('maxiter', 25000, lower=0.0,
+        opt.add_option('maxiter', 100000, lower=0.0,
                        desc='Maximum number of iterations.')
         opt.add_option('penalty_factor', 3.0,
                        desc='Penalty weight on objective using radial functions.')
@@ -140,10 +140,12 @@ class Branch_and_Bound(Driver):
                        desc='Penalty width on objective using radial functions.')
         opt.add_option('trace_iter', 10,
                        desc='Number of generations to trace back for ubd.')
+        opt.add_option('maxiter_ubd', 3000,
+                       desc='Number of generations ubd stays the same')
         opt.add_option('use_surrogate', False,
                        desc='Use surrogate model for the optimization. Training '
                        'data must be supplied.')
-        opt.add_option('local_search', False,
+        opt.add_option('local_search', True,
                         desc='Set to True if local search needs to be performed '
                         'in step 2.')
 
@@ -229,6 +231,7 @@ class Branch_and_Bound(Driver):
         ftol = self.options['ftol']
         disp = self.options['disp']
         maxiter = self.options['maxiter']
+        maxiter_ubd = self.options['maxiter_ubd']
 
         # Metadata Setup
         self.metadata = create_local_meta(None, self.record_name)
@@ -363,8 +366,10 @@ class Branch_and_Bound(Driver):
         num_des = len(self.xI_lb)
         node_num = 0
         itercount = 0
+        ubd_count = 0
 
         # Initial B&B bounds are infinite.
+        UBD = np.inf
         LBD = -np.inf
         LBD_prev =- np.inf
 
@@ -373,24 +378,30 @@ class Branch_and_Bound(Driver):
         xL_iter = self.xI_lb.copy()
         xU_iter = self.xI_ub.copy()
 
-        # Initial optimal objective and solution
-        # Randomly generate an integer point
-        # TODO Generate as many random points as number of design variables
-        xopt = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter)).reshape(num_des)
-        # Use this one for verification against matlab
-        # xopt = 2.0*np.ones((num_des))
-        fopt = self.objective_callback(xopt)
-        self.eflag_MINLPBB = True
-        UBD = fopt
+        #TODO: Generate as many random samples as number of available procs in parallel
+        #TODO: Use some intelligent sampling rather than random
+        # Initial (good) optimal objective and solution
+        # Randomly generate some integer points
+        for ii in range(10*num_des):
+            xopt_ii = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter)).reshape(num_des)
+            # Use this one for verification against matlab
+            # xopt = 2.0*np.ones((num_des))
+            fopt_ii = self.objective_callback(xopt_ii)
+            if fopt_ii < UBD:
+                self.eflag_MINLPBB = True
+                UBD = fopt_ii
+                fopt = fopt_ii
+                xopt = xopt_ii
 
         # This stuff is just for printing.
         par_node = 0
 
         # Active set fields: (Updated!)
-        #     Aset = [[NodeNumber, lb, ub, LBD, UBD, ubd_track, ubdloc_best], [], ..]
+        #     Aset = [[NodeNumber, lb, ub, LBD, UBD, nodeHist], [], ..]
         # Each node is a list.
         active_set = []
         nodeHist = nodeHistclass()
+        UBD_term = UBD
 
         comm = problem.root.comm
         if self.load_balance:
@@ -414,12 +425,12 @@ class Branch_and_Bound(Driver):
 
             # Initial number of nodes based on number of available procs
             args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD,
-                              UBD, fopt, xopt, nodeHist)
+                              UBD, fopt, xopt, nodeHist, ubd_count)
         else:
 
             # Start with 1 node.
             args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                xopt, node_num, nodeHist)]
+                xopt, node_num, nodeHist, ubd_count)]
 
         # Main Loop
         while not terminate:
@@ -436,7 +447,7 @@ class Branch_and_Bound(Driver):
                                           comm, allgather=True)
 
             itercount += len(args)
-
+            ubd_count += len(args)
             # Put all the new nodes into active set.
             for result in results:
                 new_UBD, new_fopt, new_xopt, new_nodes = result[0]
@@ -446,6 +457,9 @@ class Branch_and_Bound(Driver):
                     UBD = new_UBD
                     fopt = new_fopt
                     xopt = new_xopt
+                if abs(new_UBD-UBD_term)>0.001: #Look for substantial change in UBD to reset the counter
+                    ubd_count = 1
+                    UBD_term = new_UBD
 
                 # TODO: Should we extend the active set with all the cases we
                 # ran, or just the best one. All for now.
@@ -478,7 +492,7 @@ class Branch_and_Bound(Driver):
                     self.iter_count += 1
 
                     args.append((xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                                 xopt, node_num, nodeHist))
+                                 xopt, node_num, nodeHist, ubd_count))
 
                     # c. Delete the selected node from the Active set of nodes
                     del active_set[ind_LBD]
@@ -500,7 +514,7 @@ class Branch_and_Bound(Driver):
                     print("Terminating! No new node to explore.")
                     print("Max Node", node_num)
 
-            if itercount > maxiter:
+            if itercount > maxiter or ubd_count > maxiter_ubd:
                 terminate = True
 
         # Finalize by putting optimal value back into openMDAO
@@ -520,7 +534,7 @@ class Branch_and_Bound(Driver):
             self.fopt = fopt
 
     def evaluate_node(self, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD,
-                      fopt, xopt, node_num, nodeHist):
+                      fopt, xopt, node_num, nodeHist, ubd_count):
         """Branch and Bound step on a single node. This function
         encapsulates the portion of the code that runs in parallel.
         """
@@ -539,8 +553,19 @@ class Branch_and_Bound(Driver):
         xloc_iter = np.round(xL_iter + 0.49*(xU_iter - xL_iter))
         floc_iter = self.objective_callback(xloc_iter)
 
+        #Sample few more points based on ubd_count and priority_flag
+        agg_fac = [0.5,1.0,1.5]
+        num_samples = np.round(agg_fac[int(np.floor(ubd_count/1000))]*(1 + 2*nodeHist.priority_flag)*num_des)
+        for ii in range(int(num_samples)):
+            xloc_iter_new = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter))
+            floc_iter_new = self.objective_callback(xloc_iter_new)
+            if floc_iter_new < floc_iter:
+                floc_iter = floc_iter_new
+                xloc_iter = xloc_iter_new
+
         efloc_iter = True
         if local_search:
+            trace_iter = 3
             if np.abs(floc_iter) > active_tol: #Perform at non-flat starting point
                 #--------------------------------------------------------------
                 #Step 2: Obtain a local solution
@@ -649,18 +674,23 @@ class Branch_and_Bound(Driver):
                 # Step 5: Store any new node inside the active set that has LBD
                 # lower than the UBD.
                 #--------------------------------------------------------------
-                if nodeHist.ubdloc_best > floc_iter + 1.0e-6:
-                    ubd_track = np.concatenate((nodeHist.ubd_track,1),axis=0)
+                ubdloc_best = nodeHist.ubdloc_best
+                if nodeHist.ubdloc_best > floc_iter + 1.0e-4:
+                    ubd_track = np.concatenate((nodeHist.ubd_track,np.array([1])),axis=0)
                     ubdloc_best = floc_iter
                 else:
-                    ubd_track = np.concatenate((nodeHist.ubd_track,0),axis=0)
-                if len(ubd_track) >= trace_iter and np.sum(ubd_track[-trace_iter:])==0:
+                    ubd_track = np.concatenate((nodeHist.ubd_track,np.array([0])),axis=0)
+                diff_LBD = abs(LBD_prev - LBD_NegConEI)
+                if len(ubd_track) >= trace_iter and np.sum(ubd_track[-trace_iter:])==0 and diff_LBD>0.1:
                     LBD_NegConEI = np.inf
-                print("UBD_track",ubd_track)
+                priority_flag = 0
+                if diff_LBD<=0.1:
+                    priority_flag = 1 #Very high chances of finding a better ubd in this node
                 nodeHist_new = nodeHistclass()
                 nodeHist_new.ubd_track = ubd_track
                 nodeHist_new.ubdloc_best = ubdloc_best
-                
+                nodeHist_new.priority_flag = priority_flag
+
                 if LBD_NegConEI < UBD - 1.0e-6:
                     node_num += 1
                     new_node = [node_num, lb, ub, LBD_NegConEI, floc_iter, nodeHist_new]
@@ -1327,7 +1357,7 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
 
     return EV
 
-def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, nodeHist):
+def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, nodeHist, ubd_count):
     pts = (xU_iter-xL_iter) + 1.0
     com_enum = np.prod(pts, axis=0)
     tot_pts = 0.0
@@ -1367,10 +1397,10 @@ def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, no
             xL_iter, xU_iter, enum = new_nodes[ii]
             tot_pts += enum
             args.append((xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                         xopt, ii+1, nodeHist))
+                         xopt, ii+1, nodeHist, ubd_count))
     else:
         args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                xopt, 0, nodeHist)]
+                xopt, 0, nodeHist, ubd_count)]
 
     return args
 
@@ -1378,3 +1408,4 @@ class nodeHistclass():
     def __init__(self):
         self.ubd_track = np.array([1])
         self.ubdloc_best = np.inf
+        self.priority_flag = 0
