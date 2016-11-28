@@ -90,7 +90,7 @@ def snopt_opt2(objfun, desvar, lb, ub, title=None, options=None,
     else:
         raise(RuntimeError, 'Need pyoptsparse to run the SNOPT sub optimizer.')
 
-    opt_prob = Optimization(title, objfun)
+    opt_prob = Optimization(title, objfun, comm=FakeComm())
 
     ndv = len(desvar)
 
