@@ -625,8 +625,13 @@ class Branch_and_Bound(Driver):
 
                 opt_x, opt_f, succ_flag, msg = snopt_opt2(_objcall, xC_iter, xL_iter, xU_iter, title='LocalSearch',
                                          options={'Major optimality tolerance' : 1.0e-8})
-                xloc_iter = np.round(np.asarray(opt_x).flatten())
-                floc_iter = self.objective_callback(xloc_iter)
+
+                xloc_iter_new = np.round(np.asarray(opt_x).flatten())
+                floc_iter_new = self.objective_callback(xloc_iter_new)
+                if floc_iter_new < floc_iter:
+                    floc_iter = floc_iter_new
+                    xloc_iter = xloc_iter_new
+
                 # if not optResult.success:
                 #     efloc_iter = False
                 #     floc_iter = np.inf
