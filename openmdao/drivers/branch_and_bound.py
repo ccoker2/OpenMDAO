@@ -80,6 +80,47 @@ def snopt_opt(objfun, desvar, lb, ub, ncon, title=None, options=None,
 
     return x, f, success_flag
 
+def snopt_opt2(objfun, desvar, lb, ub, title=None, options=None,
+              sens=None, jac=None):
+    """ Wrapper function for running a SNOPT optimization through
+    pyoptsparse."""
+
+    if OPTIMIZER:
+        from pyoptsparse import Optimization
+    else:
+        raise(RuntimeError, 'Need pyoptsparse to run the SNOPT sub optimizer.')
+
+    opt_prob = Optimization(title, objfun)
+
+    ndv = len(desvar)
+
+    opt_prob.addVarGroup('x', ndv, type='c', value=desvar.flatten(), lower=lb.flatten(),
+                         upper=ub.flatten())
+    opt_prob.addObj('obj')
+
+    # Fall back on SLSQP if SNOPT isn't there
+    _tmp = __import__('pyoptsparse', globals(), locals(), [OPTIMIZER], 0)
+    opt = getattr(_tmp, OPTIMIZER)()
+
+
+    if options:
+        for name, value in iteritems(options):
+            opt.setOption(name, value)
+
+    opt.setOption('Major iterations limit', 100)
+    opt.setOption('Verify level', -1)
+    opt.setOption('iSumm', 0)
+    #opt.setOption('iPrint', 0)
+
+    sol = opt(opt_prob, sens=sens, sensStep=1.0e-6)
+    #print(sol)
+
+    x = sol.getDVs()['x']
+    f = sol.objectives['obj'].value
+    success_flag = sol.optInform['value'] < 2
+    msg = sol.optInform['text']
+
+    return x, f, success_flag, msg
 
 class Branch_and_Bound(Driver):
     """ Class definition for the Branch_and_Bound driver. This driver can be run
@@ -555,14 +596,13 @@ class Branch_and_Bound(Driver):
 
         #Sample few more points based on ubd_count and priority_flag
         agg_fac = [0.5,1.0,1.5]
-        num_samples = np.round(agg_fac[int(np.floor(ubd_count/1000))]*(1 + 2*nodeHist.priority_flag)*num_des)
+        num_samples = np.round(agg_fac[int(np.floor(ubd_count/1000))]*(1 + 3*nodeHist.priority_flag)*num_des)
         for ii in range(int(num_samples)):
             xloc_iter_new = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter))
             floc_iter_new = self.objective_callback(xloc_iter_new)
             if floc_iter_new < floc_iter:
                 floc_iter = floc_iter_new
                 xloc_iter = xloc_iter_new
-
         efloc_iter = True
         if local_search:
             trace_iter = 3
@@ -574,20 +614,25 @@ class Branch_and_Bound(Driver):
                 # TODO: Make it more pluggable.
                 # TODO: Use SNOPT [Not a priority-Not going to use local search anytime soon]
                 xC_iter = xloc_iter
-                bnds = [(xL_iter[ii], xU_iter[ii]) for ii in range(num_des)]
+                def _objcall(dv_dict):
+                    """ Callback function"""
+                    fail = 0
+                    x = dv_dict['x']
+                    # Objective
+                    func_dict = {}
+                    func_dict['obj'] = self.objective_callback(x)[0]
+                    return func_dict, fail
 
-                optResult = minimize(self.objective_callback, xC_iter,
-                                     method='SLSQP', bounds=bnds,
-                                     options={'ftol' : self.options['ftol']})
-
-                xloc_iter = np.round(optResult.x.reshape(num_des))
-                floc_iter = self.objective_callback(xloc_iter)
-
-                if not optResult.success:
-                    efloc_iter = False
-                    floc_iter = np.inf
-                else:
-                    efloc_iter = True
+                opt_x, opt_f, succ_flag, msg = snopt_opt2(_objcall, xC_iter, xL_iter, xU_iter, title='LocalSearch',
+                                         options={'Major optimality tolerance' : 1.0e-8})
+                floc_iter = opt_f
+                xloc_iter = np.asarray(opt_x).flatten()
+                # floc_iter = self.objective_callback(xloc_iter)
+                # if not optResult.success:
+                #     efloc_iter = False
+                #     floc_iter = np.inf
+                # else:
+                #     efloc_iter = True
 
         #--------------------------------------------------------------
         # Step 3: Partition the current rectangle as per the new
@@ -681,7 +726,7 @@ class Branch_and_Bound(Driver):
                 else:
                     ubd_track = np.concatenate((nodeHist.ubd_track,np.array([0])),axis=0)
                 diff_LBD = abs(LBD_prev - LBD_NegConEI)
-                if len(ubd_track) >= trace_iter and np.sum(ubd_track[-trace_iter:])==0 and diff_LBD>0.1:
+                if len(ubd_track) >= trace_iter and np.sum(ubd_track[-trace_iter:])==0:
                     LBD_NegConEI = np.inf
                 priority_flag = 0
                 if diff_LBD<=0.1:
