@@ -220,7 +220,7 @@ class Branch_and_Bound(Driver):
 
         # Experimental Options. TODO: could go into Options
         self.load_balance = True
-        self.aggressive_splitting = True
+        self.aggressive_splitting = False
 
     def _setup(self):
         """  Initialize whatever we need."""
@@ -625,9 +625,8 @@ class Branch_and_Bound(Driver):
 
                 opt_x, opt_f, succ_flag, msg = snopt_opt2(_objcall, xC_iter, xL_iter, xU_iter, title='LocalSearch',
                                          options={'Major optimality tolerance' : 1.0e-8})
-                floc_iter = opt_f
-                xloc_iter = np.asarray(opt_x).flatten()
-                # floc_iter = self.objective_callback(xloc_iter)
+                xloc_iter = np.round(np.asarray(opt_x).flatten())
+                floc_iter = self.objective_callback(xloc_iter)
                 # if not optResult.success:
                 #     efloc_iter = False
                 #     floc_iter = np.inf
