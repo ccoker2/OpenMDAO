@@ -151,12 +151,16 @@ class KrigingSurrogate(SurrogateModel):
             pcom_max = 3 #Maximum number of hyper-parameters we want to afford
             self.pcom = min([pcom_max,self.n_dims]) #TODO Use some criteria to find optimal number of hyper-parameters.
             self.Wstar = self.KPLS_reg()
-            num_start = 5*self.pcom
-            #TODO: Read this from a file
-            start_point = np.array([[0.5,0.5714,0.5714],[0.6429,0.0714,0.3571],[0.9286,0.7857,0.7857],\
-            [0.3571,0.7143,0.1429],[0.8571,0.2857,0.6429],[0.7857,0.8571,0.2857],[0.0714,0.6429,0.8571],\
-            [1.0,0.0,0.0714],[0.2857,0.2143,0.7143],[0.,0.4286,0.4286],[0.5714,0.3571,1.0],[0.2143,1.0,0.5],\
-            [0.1429,0.1429,0.2143],[0.7143,0.5,0.0],[0.4286,0.9286,0.9286]])
+            if self.pcom >= 3:
+                num_start = 5*self.pcom
+                #TODO: Read this from a file
+                start_point = np.array([[0.5,0.5714,0.5714],[0.6429,0.0714,0.3571],[0.9286,0.7857,0.7857],\
+                [0.3571,0.7143,0.1429],[0.8571,0.2857,0.6429],[0.7857,0.8571,0.2857],[0.0714,0.6429,0.8571],\
+                [1.0,0.0,0.0714],[0.2857,0.2143,0.7143],[0.,0.4286,0.4286],[0.5714,0.3571,1.0],[0.2143,1.0,0.5],\
+                [0.1429,0.1429,0.2143],[0.7143,0.5,0.0],[0.4286,0.9286,0.9286]])
+            else:
+                num_start = 3
+                start_point = np.array([[0.25],[0.5],[0.75]])
         else:
             self.Wstar = np.identity(self.n_dims)
             self.pcom = self.n_dims

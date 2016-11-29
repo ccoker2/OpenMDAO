@@ -173,7 +173,7 @@ class Branch_and_Bound(Driver):
                        'messages.')
         opt.add_option('ftol', 1.0e-4, lower=0.0,
                        desc='Absolute tolerance for sub-optimizations.')
-        opt.add_option('maxiter', 100000, lower=0.0,
+        opt.add_option('maxiter', 50000, lower=0.0,
                        desc='Maximum number of iterations.')
         opt.add_option('penalty_factor', 3.0,
                        desc='Penalty weight on objective using radial functions.')
@@ -220,7 +220,7 @@ class Branch_and_Bound(Driver):
 
         # Experimental Options. TODO: could go into Options
         self.load_balance = True
-        self.aggressive_splitting = False
+        self.aggressive_splitting = True
 
     def _setup(self):
         """  Initialize whatever we need."""
@@ -473,6 +473,8 @@ class Branch_and_Bound(Driver):
             args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
                 xopt, node_num, nodeHist, ubd_count)]
 
+        #Evaluate the concavity factor
+        self.con_fac = concave_factor(xL_iter,xU_iter,obj_surrogate)
         # Main Loop
         while not terminate:
 
@@ -488,7 +490,10 @@ class Branch_and_Bound(Driver):
                                           comm, allgather=True)
 
             itercount += len(args)
-            ubd_count += len(args)
+            # print(results)
+            # exit()
+            if UBD < -1.0e-3:
+                ubd_count += len(args)
             # Put all the new nodes into active set.
             for result in results:
                 new_UBD, new_fopt, new_xopt, new_nodes = result[0]
@@ -593,10 +598,10 @@ class Branch_and_Bound(Driver):
         #Keep this to 0.49 to always round towards bottom-left
         xloc_iter = np.round(xL_iter + 0.49*(xU_iter - xL_iter))
         floc_iter = self.objective_callback(xloc_iter)
-
+        xC_iter = xloc_iter #Always start local search from the center
         #Sample few more points based on ubd_count and priority_flag
         agg_fac = [0.5,1.0,1.5]
-        num_samples = np.round(agg_fac[int(np.floor(ubd_count/1000))]*(1 + 3*nodeHist.priority_flag)*num_des)
+        num_samples = np.round(agg_fac[int(np.floor(ubd_count/1000))]*(1 + 3*nodeHist.priority_flag)*3*num_des)
         for ii in range(int(num_samples)):
             xloc_iter_new = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter))
             floc_iter_new = self.objective_callback(xloc_iter_new)
@@ -612,15 +617,14 @@ class Branch_and_Bound(Driver):
                 #--------------------------------------------------------------
                 # Using a gradient-based method here.
                 # TODO: Make it more pluggable.
-                # TODO: Use SNOPT [Not a priority-Not going to use local search anytime soon]
-                xC_iter = xloc_iter
                 def _objcall(dv_dict):
                     """ Callback function"""
                     fail = 0
                     x = dv_dict['x']
                     # Objective
                     func_dict = {}
-                    func_dict['obj'] = self.objective_callback(x)[0]
+                    confac_flag = True
+                    func_dict['obj'] = self.objective_callback(x,confac_flag)[0]
                     return func_dict, fail
 
                 opt_x, opt_f, succ_flag, msg = snopt_opt2(_objcall, xC_iter, xL_iter, xU_iter, title='LocalSearch',
@@ -637,7 +641,6 @@ class Branch_and_Bound(Driver):
                 #     floc_iter = np.inf
                 # else:
                 #     efloc_iter = True
-
         #--------------------------------------------------------------
         # Step 3: Partition the current rectangle as per the new
         # branching scheme.
@@ -724,17 +727,17 @@ class Branch_and_Bound(Driver):
                 # lower than the UBD.
                 #--------------------------------------------------------------
                 ubdloc_best = nodeHist.ubdloc_best
-                if nodeHist.ubdloc_best > floc_iter + 1.0e-4:
+                if nodeHist.ubdloc_best > floc_iter + 1.0e-6:
                     ubd_track = np.concatenate((nodeHist.ubd_track,np.array([1])),axis=0)
                     ubdloc_best = floc_iter
                 else:
                     ubd_track = np.concatenate((nodeHist.ubd_track,np.array([0])),axis=0)
                 diff_LBD = abs(LBD_prev - LBD_NegConEI)
-                if len(ubd_track) >= trace_iter and np.sum(ubd_track[-trace_iter:])==0:
+                if len(ubd_track) >= trace_iter and np.sum(ubd_track[-trace_iter:])==0 and UBD<=-1.0e-3:
                     LBD_NegConEI = np.inf
                 priority_flag = 0
-                if diff_LBD<=0.1:
-                    priority_flag = 1 #Very high chances of finding a better ubd in this node
+                if diff_LBD<=0.5:
+                    priority_flag = 1 #Heavily explore this node
                 nodeHist_new = nodeHistclass()
                 nodeHist_new.ubd_track = ubd_track
                 nodeHist_new.ubdloc_best = ubdloc_best
@@ -777,10 +780,9 @@ class Branch_and_Bound(Driver):
 
         return UBD, fopt, xopt, new_nodes
 
-    def objective_callback(self, xI):
+    def objective_callback(self, xI, con_EI=False):
         """ Callback for main problem evaluation."""
         obj_surrogate = self.obj_surrogate
-
         # When run stanalone, the objective is the model objective.
         if self.standalone:
             if self.options['use_surrogate']:
@@ -825,7 +827,9 @@ class Branch_and_Bound(Driver):
 
             P = 0.0
 
-            if self.options['concave_EI']: #Locally makes ei concave to get rid of flat objective space
+            # if self.options['concave_EI']: #Locally makes ei concave to get rid of flat objective space
+            if con_EI:
+                con_fac = self.con_fac
                 for ii in range(k):
                     P += con_fac[ii]*(lb[ii] - xval[ii])*(ub[ii] - xval[ii])
 
@@ -1458,3 +1462,17 @@ class nodeHistclass():
         self.ubd_track = np.array([1])
         self.ubdloc_best = np.inf
         self.priority_flag = 0
+
+def concave_factor(xI_lb,xI_ub,surrogate):
+    xL = (xI_lb - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
+    xU = (xI_ub - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
+    per_htm = 0.5
+    con_fac = np.zeros((len(xL),))
+    for k in range(len(xL)):
+        if np.abs(xL[k] - xU[k]) > 1.0e-6:
+            h_req = (per_htm/100)*(xU[k]-xL[k])
+            xm = (xL[k] + xU[k])*0.5
+            h_act = (xm-xL[k])*(xm-xU[k])
+            con_fac[k] = h_req/h_act
+    # print(con_fac)
+    return con_fac
