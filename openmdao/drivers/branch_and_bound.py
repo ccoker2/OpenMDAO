@@ -1360,7 +1360,7 @@ def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
         ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
 
     if abs(SSqr) <= 1.0e-6:
-        NegEI = 0.0
+        NegEI = np.array([0.0])
     else:
         dy = y_min - y_hat
         SSqr = abs(SSqr)
