@@ -598,7 +598,6 @@ class Branch_and_Bound(Driver):
         #Keep this to 0.49 to always round towards bottom-left
         xloc_iter = np.round(xL_iter + 0.49*(xU_iter - xL_iter))
         floc_iter = self.objective_callback(xloc_iter)
-        xC_iter = xloc_iter #Always start local search from the center
         #Sample few more points based on ubd_count and priority_flag
         agg_fac = [0.5,1.0,1.5]
         num_samples = np.round(agg_fac[int(np.floor(ubd_count/1000))]*(1 + 3*nodeHist.priority_flag)*3*num_des)
@@ -626,7 +625,8 @@ class Branch_and_Bound(Driver):
                     confac_flag = True
                     func_dict['obj'] = self.objective_callback(x,confac_flag)[0]
                     return func_dict, fail
-
+                    
+                xC_iter = xloc_iter
                 opt_x, opt_f, succ_flag, msg = snopt_opt2(_objcall, xC_iter, xL_iter, xU_iter, title='LocalSearch',
                                          options={'Major optimality tolerance' : 1.0e-8})
 
