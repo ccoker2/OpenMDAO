@@ -1395,7 +1395,7 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
                           ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
 
     if abs(gSSqr) <= 1.0e-6:
-        EV = 0.0
+        EV = np.array([0.0])
     else:
         # Calculate expected violation
         dg = g_hat - g_min
