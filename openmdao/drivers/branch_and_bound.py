@@ -489,9 +489,12 @@ class Branch_and_Bound(Driver):
                 results = concurrent_eval(self.evaluate_node, cases,
                                           comm, allgather=True)
 
+            # Print the traceback if it fails
+            if not results[0]:
+                print(results[0][1])
+
             itercount += len(args)
-            # print(results)
-            # exit()
+
             if UBD < -1.0e-3:
                 ubd_count += len(args)
             # Put all the new nodes into active set.
