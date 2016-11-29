@@ -625,7 +625,7 @@ class Branch_and_Bound(Driver):
                     confac_flag = True
                     func_dict['obj'] = self.objective_callback(x,confac_flag)[0]
                     return func_dict, fail
-                    
+
                 xC_iter = xloc_iter
                 opt_x, opt_f, succ_flag, msg = snopt_opt2(_objcall, xC_iter, xL_iter, xU_iter, title='LocalSearch',
                                          options={'Major optimality tolerance' : 1.0e-8})
@@ -839,7 +839,8 @@ class Branch_and_Bound(Driver):
             pfactor = self.options['penalty_factor']
             width = self.options['penalty_width']
             for xbad in self.bad_samples:
-                f += pfactor * np.sum(np.exp(-1./width**2 * (xbad - xval)**2))
+                xbad_norm = (xbad - obj_surrogate.X_mean.flatten())/obj_surrogate.X_std.flatten()
+                f += pfactor * np.sum(np.exp(-1./width**2 * (xbad_norm - xval)**2))
             # END OF RADIAL PENALIZATION ADDENDUM
 
         #print(xI, f)

@@ -222,6 +222,7 @@ class AMIEGO_driver(Driver):
         obj = []
         cons = {}
         best_int_design = {}
+        best_cont_design = {}
         for con in self.get_constraint_metadata():
             cons[con] = []
 
@@ -343,7 +344,6 @@ class AMIEGO_driver(Driver):
                             val = val.val
                         best_int_design[name] = val.copy()
 
-                    best_cont_design = {}
                     for name in self.c_dvs:
                         best_cont_design[name] = desvars[name].copy()
 
