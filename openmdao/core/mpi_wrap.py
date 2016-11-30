@@ -79,10 +79,26 @@ else:
         sys.stdout.write('\n')
 
 class FakeComm(object):
-    """ Who needs a real Comm when you have a fake one."""
+    """ Who needs a real Comm when you have a fake one.
+
+    The methods are needed for pyoptsparse so that we can run it
+    independently on each process (i.e., Amiego).
+    """
     def __init__(self):
         self.rank = 0
         self.size = 1
+
+    def gather(self, name, root=None):
+        """ Signature for gather"""
+        return name
+
+    def bcast(self, name, root=None):
+        """ Signature for bcast"""
+        return name
+
+    def recv(self, name, tag=None):
+        """ Signature for recv"""
+        return name
 
 @contextmanager
 def MultiProcFailCheck(comm):

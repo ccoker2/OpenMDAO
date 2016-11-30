@@ -172,7 +172,7 @@ class KrigingSurrogate(SurrogateModel):
         best_loglike = np.inf
         #Start from random locations
         for ii in range(num_start):
-            x0 = -3.0*np.ones((self.pcom,)) + start_point[ii]*(5.0*np.ones((self.pcom,)))
+            x0 = -3.0*np.ones((self.pcom, )) + start_point[ii]*(5.0*np.ones((self.pcom, )))
             if self.use_snopt:
                 def _calcll(dv_dict):
                     """ Callback function"""

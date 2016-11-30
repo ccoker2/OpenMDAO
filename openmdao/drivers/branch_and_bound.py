@@ -496,6 +496,11 @@ class Branch_and_Bound(Driver):
                 ubd_count += len(args)
             # Put all the new nodes into active set.
             for result in results:
+
+                # Print the traceback if it fails
+                if not result[0]:
+                    print(result[1])
+
                 new_UBD, new_fopt, new_xopt, new_nodes = result[0]
 
                 # Save stats for the best case.
@@ -600,7 +605,8 @@ class Branch_and_Bound(Driver):
         floc_iter = self.objective_callback(xloc_iter)
         #Sample few more points based on ubd_count and priority_flag
         agg_fac = [0.5,1.0,1.5]
-        num_samples = np.round(agg_fac[int(np.floor(ubd_count/(self.maxiter_ubd/len(agg_fac))))]*(1 + 3*nodeHist.priority_flag)*3*num_des)
+        ubd_denom = self.options['maxiter_ubd']/len(agg_fac)
+        num_samples = np.round(agg_fac[int(np.floor(ubd_count/ubd_denom))]*(1 + 3*nodeHist.priority_flag)*3*num_des)
         for ii in range(int(num_samples)):
             xloc_iter_new = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter))
             floc_iter_new = self.objective_callback(xloc_iter_new)
@@ -831,7 +837,6 @@ class Branch_and_Bound(Driver):
             # for xbad in self.bad_samples:
             #     f += pfactor * np.sum(np.exp(-1./width**2 * (xbad - xval)**2))
             # # END OF RADIAL PENALIZATION ADDENDUM
-
         #print(xI, f)
         return f
 
@@ -1389,7 +1394,7 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
                           ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
 
     if abs(gSSqr) <= 1.0e-6:
-        EV =  np.array([0.0])
+        EV = np.array([0.0])
     else:
         # Calculate expected violation
         dg = g_hat - g_min

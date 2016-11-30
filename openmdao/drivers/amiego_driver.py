@@ -222,6 +222,7 @@ class AMIEGO_driver(Driver):
         obj = []
         cons = {}
         best_int_design = {}
+        best_cont_design = {}
         for con in self.get_constraint_metadata():
             cons[con] = []
 
@@ -325,6 +326,9 @@ class AMIEGO_driver(Driver):
                     print(eflag_conopt)
                     self.minlp.bad_samples.append(x_i[i_run])
 
+                if not eflag_conopt:
+                    self.minlp.bad_samples.append(x_i[i_run])
+
                 # Get objectives and constraints (TODO)
                 current_objs = self.get_objectives()
                 obj_name = list(current_objs.keys())[0]
@@ -346,14 +350,13 @@ class AMIEGO_driver(Driver):
                             val = val.val
                         best_int_design[name] = val.copy()
 
-                    best_cont_design = {}
                     for name in self.c_dvs:
                         best_cont_design[name] = desvars[name].copy()
                 exit()
             if disp:
                 print('Elapsed Time:', time() - t0)
                 print("======================ContinuousOptimization-End=======================================")
-
+            exit()
             #------------------------------------------------------------------
             # Step 3: Build the surrogate models
             #------------------------------------------------------------------
@@ -399,7 +402,6 @@ class AMIEGO_driver(Driver):
                         val_idx = val[:, j:j+1]
 
                     con_surr.train(x_i, val_idx, True)
-
                     con_surr.y = val_idx
                     con_surr._name = name
                     con_surr.lb_org = xI_lb

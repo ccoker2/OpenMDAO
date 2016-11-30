@@ -272,7 +272,7 @@ class NewAC():
         # Intermediate inputs about the 'yet-to-be-designed' aircraft
         self.num_des = 6 #Number of aircraft design variables
         self.Filename = '/home/roger/a/roy10/Amiego_TestFiles/FLOPS_Files/AC_New' #A better version of B737-8ish aircraft
-        self.AC_num_new = np.array([5])
+        self.AC_num_new = np.array([25])
         self.MH_new = 0.948
         self.DESRNG = 2940.0
         self.GW = 174900.0
@@ -286,7 +286,7 @@ class NewAC():
 class ExistingAC():
     def __init__(self):
         self.AC_name = ['B757-200']
-        self.AC_num=np.array([8])
+        self.AC_num=np.array([25])
         self.seat_cap=np.array([180.0])
         self.des_range=np.array([2800.0])
         self.MH_FH=np.array([0.948])
