@@ -42,10 +42,10 @@ def obj_cons_calc(xC_val, xI, xC_num_des, xClb, xCub, newac, existac, network):
     TD, LD, TOC, BH, acdata_count, nan_count = ReadFLOPSOutput(Filename)
     if nan_count > 0 and acdata_count != (1+num_route*num_ac):
         print('Mission Failed! Could not read FLOPS output.')
-        TD = 20000.0
-        LD = 20000.0
+        TD = 10000.0
+        LD = 10000.0
         TOC = 1.0e6*np.ones((num_route+1,1))
-        BH = 1.0e2*np.ones((num_route+1,1))
+        BH = 25.0*np.ones((num_route+1,1))
 
     cost_1j = TOC[1:]
     BH_1j = BH[1:]
@@ -248,6 +248,7 @@ def ReadFLOPSOutput(Filename):
                 BH = np.concatenate((BH,np.array([DOC/DOCperBH])),axis = 0)
             if np.isnan(DOC) or np.isnan(IOC) or np.isnan(DOCperBH):
                 nan_count += 1
+                print('Nan found!')
         if len(line)>15 and line[:15] == '#OBJ/VAR/CONSTR' and count == 0:
             acdata_count += 1
             fid.readline()

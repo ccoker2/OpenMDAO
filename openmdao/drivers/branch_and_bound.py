@@ -27,7 +27,7 @@ from scipy.optimize import minimize
 from scipy.special import erf
 
 from openmdao.core.driver import Driver
-from openmdao.core.mpi_wrap import debug
+from openmdao.core.mpi_wrap import debug, FakeComm
 from openmdao.surrogate_models.kriging import KrigingSurrogate
 from openmdao.test.util import set_pyoptsparse_opt
 from openmdao.util.concurrent import concurrent_eval, concurrent_eval_lb
@@ -37,23 +37,6 @@ from openmdao.util.record_util import create_local_meta, update_local_meta
 # if it is, try to use SNOPT but fall back to SLSQP
 OPT, OPTIMIZER = set_pyoptsparse_opt('SNOPT')
 
-class DummyComm(object):
-    """ Do-nothing communicator for pyoptsparse so that we can run it
-    independently on each process."""
-
-    rank = 0
-
-    def gather(self, name, root=None):
-        """ Signature for gather"""
-        return name
-
-    def bcast(self, name, root=None):
-        """ Signature for bcast"""
-        return name
-
-    def recv(self, name, tag=None):
-        """ Signature for recv"""
-        return name
 
 def snopt_opt(objfun, desvar, lb, ub, ncon, title=None, options=None,
               sens=None, jac=None):
@@ -65,7 +48,7 @@ def snopt_opt(objfun, desvar, lb, ub, ncon, title=None, options=None,
     else:
         raise(RuntimeError, 'Need pyoptsparse to run the SNOPT sub optimizer.')
 
-    opt_prob = Optimization(title, objfun, comm=DummyComm())
+    opt_prob = Optimization(title, objfun, comm=FakeComm())
 
     ndv = len(desvar)
 
@@ -73,6 +56,46 @@ def snopt_opt(objfun, desvar, lb, ub, ncon, title=None, options=None,
                          upper=ub.flatten())
     opt_prob.addConGroup('con', ncon, upper=np.zeros((ncon)))#, linear=True, wrt='x',
                          #jac={'x' : jac})
+    opt_prob.addObj('obj')
+
+    # Fall back on SLSQP if SNOPT isn't there
+    _tmp = __import__('pyoptsparse', globals(), locals(), [OPTIMIZER], 0)
+    opt = getattr(_tmp, OPTIMIZER)()
+
+    if options:
+        for name, value in iteritems(options):
+            opt.setOption(name, value)
+
+    opt.setOption('Major iterations limit', 100)
+    opt.setOption('Verify level', -1)
+    opt.setOption('iSumm', 0)
+    #opt.setOption('iPrint', 0)
+
+    sol = opt(opt_prob, sens=sens, sensStep=1.0e-6)
+    #print(sol)
+
+    x = sol.getDVs()['x']
+    f = sol.objectives['obj'].value
+    success_flag = sol.optInform['value'] < 2
+
+    return x, f, success_flag
+
+def snopt_opt2(objfun, desvar, lb, ub, title=None, options=None,
+              sens=None, jac=None):
+    """ Wrapper function for running a SNOPT optimization through
+    pyoptsparse."""
+
+    if OPTIMIZER:
+        from pyoptsparse import Optimization
+    else:
+        raise(RuntimeError, 'Need pyoptsparse to run the SNOPT sub optimizer.')
+
+    opt_prob = Optimization(title, objfun, comm=FakeComm())
+
+    ndv = len(desvar)
+
+    opt_prob.addVarGroup('x', ndv, type='c', value=desvar.flatten(), lower=lb.flatten(),
+                         upper=ub.flatten())
     opt_prob.addObj('obj')
 
     # Fall back on SLSQP if SNOPT isn't there
@@ -95,9 +118,9 @@ def snopt_opt(objfun, desvar, lb, ub, ncon, title=None, options=None,
     x = sol.getDVs()['x']
     f = sol.objectives['obj'].value
     success_flag = sol.optInform['value'] < 2
+    msg = sol.optInform['text']
 
-    return x, f, success_flag
-
+    return x, f, success_flag, msg
 
 class Branch_and_Bound(Driver):
     """ Class definition for the Branch_and_Bound driver. This driver can be run
@@ -150,20 +173,27 @@ class Branch_and_Bound(Driver):
                        'messages.')
         opt.add_option('ftol', 1.0e-4, lower=0.0,
                        desc='Absolute tolerance for sub-optimizations.')
-        opt.add_option('maxiter', 25000, lower=0.0,
+        opt.add_option('maxiter', 100000, lower=0.0,
                        desc='Maximum number of iterations.')
-        opt.add_option('maxUBDiter', 5000, lower=0.0,
-                       desc='Maximum number of iterations for which UBD stays the same.')
+        opt.add_option('penalty_factor', 3.0,
+                       desc='Penalty weight on objective using radial functions.')
+        opt.add_option('penalty_width', 0.5,
+                       desc='Penalty width on objective using radial functions.')
+        opt.add_option('trace_iter', 10,
+                       desc='Number of generations to trace back for ubd.')
+        opt.add_option('maxiter_ubd', 10000,
+                       desc='Number of generations ubd stays the same')
         opt.add_option('use_surrogate', False,
                        desc='Use surrogate model for the optimization. Training '
                        'data must be supplied.')
-        opt.add_option('local_search', False,
+        opt.add_option('local_search', True,
                         desc='Set to True if local search needs to be performed '
                         'in step 2.')
 
         # Initial Sampling
         # TODO: Somehow slot an object that generates this (LHC for example)
         self.sampling = {}
+        self.bad_samples = []
 
         self.dvs = []
         self.size = 0
@@ -242,7 +272,7 @@ class Branch_and_Bound(Driver):
         ftol = self.options['ftol']
         disp = self.options['disp']
         maxiter = self.options['maxiter']
-        maxUBDiter = self.options['maxUBDiter']
+        maxiter_ubd = self.options['maxiter_ubd']
 
         # Metadata Setup
         self.metadata = create_local_meta(None, self.record_name)
@@ -302,7 +332,7 @@ class Branch_and_Bound(Driver):
 
             self.obj_surrogate = obj_surrogate = self.surrogate()
             obj_surrogate.use_snopt = True
-            obj_surrogate.train(x_i_hat, obj, normalize=False)
+            obj_surrogate.train(x_i_hat, obj, KPLS_status=True)
             obj_surrogate.y = obj
             obj_surrogate.lb_org = self.xI_lb
             obj_surrogate.ub_org = self.xI_ub
@@ -377,9 +407,10 @@ class Branch_and_Bound(Driver):
         num_des = len(self.xI_lb)
         node_num = 0
         itercount = 0
-        UBDitercount = 0
+        ubd_count = 0
 
         # Initial B&B bounds are infinite.
+        UBD = np.inf
         LBD = -np.inf
         LBD_prev =- np.inf
 
@@ -388,23 +419,30 @@ class Branch_and_Bound(Driver):
         xL_iter = self.xI_lb.copy()
         xU_iter = self.xI_ub.copy()
 
-        # Initial optimal objective and solution
-        # Randomly generate an integer point
-        # TODO Generate as many random points as number of design variables
-        xopt = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter)).reshape(num_des)
-        # Use this one for verification against matlab
-        # xopt = 2.0*np.ones((num_des))
-        fopt = self.objective_callback(xopt)
-        self.eflag_MINLPBB = True
-        UBD = fopt
+        #TODO: Generate as many random samples as number of available procs in parallel
+        #TODO: Use some intelligent sampling rather than random
+        # Initial (good) optimal objective and solution
+        # Randomly generate some integer points
+        for ii in range(10*num_des):
+            xopt_ii = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter)).reshape(num_des)
+            # Use this one for verification against matlab
+            # xopt = 2.0*np.ones((num_des))
+            fopt_ii = self.objective_callback(xopt_ii)
+            if fopt_ii < UBD:
+                self.eflag_MINLPBB = True
+                UBD = fopt_ii
+                fopt = fopt_ii
+                xopt = xopt_ii
 
         # This stuff is just for printing.
         par_node = 0
 
-        # Active set fields:
-        #     Aset = [[NodeNumber, lb, ub, LBD, UBD], [], ..]
+        # Active set fields: (Updated!)
+        #     Aset = [[NodeNumber, lb, ub, LBD, UBD, nodeHist], [], ..]
         # Each node is a list.
         active_set = []
+        nodeHist = nodeHistclass()
+        UBD_term = UBD
 
         comm = problem.root.comm
         if self.load_balance:
@@ -428,13 +466,15 @@ class Branch_and_Bound(Driver):
 
             # Initial number of nodes based on number of available procs
             args = init_nodes(n_proc, xL_iter, xU_iter, par_node, LBD_prev, LBD,
-                              UBD, fopt, xopt)
+                              UBD, fopt, xopt, nodeHist, ubd_count)
         else:
 
             # Start with 1 node.
             args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                xopt, node_num)]
+                xopt, node_num, nodeHist, ubd_count)]
 
+        #Evaluate the concavity factor
+        self.con_fac = concave_factor(xL_iter,xU_iter,obj_surrogate)
         # Main Loop
         while not terminate:
 
@@ -450,8 +490,10 @@ class Branch_and_Bound(Driver):
                                           comm, allgather=True)
 
             itercount += len(args)
-            UBDitercount += len(args)
-
+            print(results)
+            exit()
+            if UBD < -1.0e-3:
+                ubd_count += len(args)
             # Put all the new nodes into active set.
             for result in results:
                 new_UBD, new_fopt, new_xopt, new_nodes = result[0]
@@ -461,7 +503,9 @@ class Branch_and_Bound(Driver):
                     UBD = new_UBD
                     fopt = new_fopt
                     xopt = new_xopt
-                    UBDitercount = 0
+                if abs(new_UBD-UBD_term)>0.001: #Look for substantial change in UBD to reset the counter
+                    ubd_count = 1
+                    UBD_term = new_UBD
 
                 # TODO: Should we extend the active set with all the cases we
                 # ran, or just the best one. All for now.
@@ -490,11 +534,11 @@ class Branch_and_Bound(Driver):
                     LBD_prev = LBD
 
                     # b. Select the lowest LBD node as the current node
-                    par_node, xL_iter, xU_iter, _, _ = active_set[ind_LBD]
+                    par_node, xL_iter, xU_iter, _, _, nodeHist = active_set[ind_LBD]
                     self.iter_count += 1
 
                     args.append((xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                                 xopt, node_num))
+                                 xopt, node_num, nodeHist, ubd_count))
 
                     # c. Delete the selected node from the Active set of nodes
                     del active_set[ind_LBD]
@@ -516,7 +560,7 @@ class Branch_and_Bound(Driver):
                     print("Terminating! No new node to explore.")
                     print("Max Node", node_num)
 
-            if itercount > maxiter or UBDitercount > maxUBDiter:
+            if itercount > maxiter or ubd_count > maxiter_ubd:
                 terminate = True
 
         # Finalize by putting optimal value back into openMDAO
@@ -536,9 +580,10 @@ class Branch_and_Bound(Driver):
             self.fopt = fopt
 
     def evaluate_node(self, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD,
-                      fopt, xopt, node_num):
-        """ Branch and Bound step on a single node. This function
-        encapsulates the portion of the code that runs in parallel."""
+                      fopt, xopt, node_num, nodeHist, ubd_count):
+        """Branch and Bound step on a single node. This function
+        encapsulates the portion of the code that runs in parallel.
+        """
 
         active_tol = self.options['active_tol']
         local_search = self.options['local_search']
@@ -546,38 +591,50 @@ class Branch_and_Bound(Driver):
         obj_surrogate = self.obj_surrogate
         con_surrogate = self.con_surrogate
         num_des = len(self.xI_lb)
+        trace_iter = self.options['trace_iter']
 
         new_nodes = []
 
         #Keep this to 0.49 to always round towards bottom-left
         xloc_iter = np.round(xL_iter + 0.49*(xU_iter - xL_iter))
         floc_iter = self.objective_callback(xloc_iter)
-
+        #Sample few more points based on ubd_count and priority_flag
+        agg_fac = [0.5,1.0,1.5]
+        num_samples = np.round(agg_fac[int(np.floor(ubd_count/(self.maxiter_ubd/len(agg_fac))))]*(1 + 3*nodeHist.priority_flag)*3*num_des)
+        for ii in range(int(num_samples)):
+            xloc_iter_new = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter))
+            floc_iter_new = self.objective_callback(xloc_iter_new)
+            if floc_iter_new < floc_iter:
+                floc_iter = floc_iter_new
+                xloc_iter = xloc_iter_new
         efloc_iter = True
         if local_search:
+            trace_iter = 3
             if np.abs(floc_iter) > active_tol: #Perform at non-flat starting point
                 #--------------------------------------------------------------
                 #Step 2: Obtain a local solution
                 #--------------------------------------------------------------
                 # Using a gradient-based method here.
                 # TODO: Make it more pluggable.
-                # TODO: Use SNOPT [Not a priority-Not going to use local search anytime soon]
+                def _objcall(dv_dict):
+                    """ Callback function"""
+                    fail = 0
+                    x = dv_dict['x']
+                    # Objective
+                    func_dict = {}
+                    confac_flag = False
+                    func_dict['obj'] = self.objective_callback(x)[0]
+                    return func_dict, fail
+
                 xC_iter = xloc_iter
-                bnds = [(xL_iter[ii], xU_iter[ii]) for ii in range(num_des)]
+                opt_x, opt_f, succ_flag, msg = snopt_opt2(_objcall, xC_iter, xL_iter, xU_iter, title='LocalSearch',
+                                         options={'Major optimality tolerance' : 1.0e-8})
 
-                optResult = minimize(self.objective_callback, xC_iter,
-                                     method='SLSQP', bounds=bnds,
-                                     options={'ftol' : ftol})
-
-                xloc_iter = np.round(optResult.x.reshape(num_des))
-                floc_iter = self.objective_callback(xloc_iter)
-
-                if not optResult.success:
-                    efloc_iter = False
-                    floc_iter = np.inf
-                else:
-                    efloc_iter = True
-
+                xloc_iter_new = np.round(np.asarray(opt_x).flatten())
+                floc_iter_new = self.objective_callback(xloc_iter_new)
+                if floc_iter_new < floc_iter:
+                    floc_iter = floc_iter_new
+                    xloc_iter = xloc_iter_new
         #--------------------------------------------------------------
         # Step 3: Partition the current rectangle as per the new
         # branching scheme.
@@ -618,8 +675,8 @@ class Branch_and_Bound(Driver):
                         NegEI = calc_conEI_norm([], obj_surrogate, SSqr=sU, y_hat=yL)
 
                         M = len(self.con_surrogate)
-                        EV = np.zeros([M, 1])
-
+                        if M>0:
+                            EV = np.zeros([M, 1])
                         # Expected constraint violation
                         for mm in range(M):
                             x_comL, x_comU, Ain_hat, bin_hat = gen_coeff_bound(lb, ub, con_surrogate[mm])
@@ -653,20 +710,35 @@ class Branch_and_Bound(Driver):
                         LBD_NegConEI = np.inf
                     dis_flag[ii] = 'F'
                 else:
-                    EV_mean = np.mean(EV, axis=0)
-                    EV_std = np.std(EV, axis=0)
-                    EV_std[EV_std == 0.] = 1.
-                    EV_norm = (EV - EV_mean) / EV_std
-                    LBD_NegConEI = max(NegEI/(1.0 + np.sum(EV_norm)), LBD_prev)
+                    if M>0:
+                        LBD_NegConEI = max(NegEI/(1.0 + np.sum(EV/M)), LBD_prev)
+                    else:
+                        LBD_NegConEI = max(NegEI, LBD_prev)
 
                 #--------------------------------------------------------------
                 # Step 5: Store any new node inside the active set that has LBD
                 # lower than the UBD.
                 #--------------------------------------------------------------
+                ubdloc_best = nodeHist.ubdloc_best
+                if nodeHist.ubdloc_best > floc_iter + 1.0e-6:
+                    ubd_track = np.concatenate((nodeHist.ubd_track,np.array([1])),axis=0)
+                    ubdloc_best = floc_iter
+                else:
+                    ubd_track = np.concatenate((nodeHist.ubd_track,np.array([0])),axis=0)
+                diff_LBD = abs(LBD_prev - LBD_NegConEI)
+                if len(ubd_track) >= trace_iter and np.sum(ubd_track[-trace_iter:])==0 and UBD<=-1.0e-3:
+                    LBD_NegConEI = np.inf
+                priority_flag = 0
+                if diff_LBD<=0.5:
+                    priority_flag = 1 #Heavily explore this node
+                nodeHist_new = nodeHistclass()
+                nodeHist_new.ubd_track = ubd_track
+                nodeHist_new.ubdloc_best = ubdloc_best
+                nodeHist_new.priority_flag = priority_flag
 
                 if LBD_NegConEI < UBD - 1.0e-6:
                     node_num += 1
-                    new_node = [node_num, lb, ub, LBD_NegConEI, floc_iter]
+                    new_node = [node_num, lb, ub, LBD_NegConEI, floc_iter, nodeHist_new]
                     new_nodes.append(new_node)
                     child_info[ii] = np.array([node_num, LBD_NegConEI, floc_iter])
                 else:
@@ -701,10 +773,9 @@ class Branch_and_Bound(Driver):
 
         return UBD, fopt, xopt, new_nodes
 
-    def objective_callback(self, xI):
+    def objective_callback(self, xI, con_EI=False):
         """ Callback for main problem evaluation."""
         obj_surrogate = self.obj_surrogate
-
         # When run stanalone, the objective is the model objective.
         if self.standalone:
             if self.options['use_surrogate']:
@@ -712,7 +783,7 @@ class Branch_and_Bound(Driver):
                 #FIXME : This will change if used standalone
                 x0I_hat = (xI - self.xI_lb)/(self.xI_ub - self.xI_lb).reshape((len(xI), 1))
 
-                f = obj_surrogate.predict(x0I_hat, normalize=False)[0]
+                f = obj_surrogate.predict(x0I_hat)[0]
 
             else:
                 raise NotImplementedError()
@@ -741,19 +812,25 @@ class Branch_and_Bound(Driver):
                 for mm in range(M):
                     EV[mm] = calc_conEV_norm(xval, con_surrogate[mm])
 
-            EV_mean = np.mean(EV, axis=0)
-            EV_std = np.std(EV, axis=0)
-            EV_std[EV_std == 0.] = 1.
-            EV_norm = (EV - EV_mean) / EV_std
-            conNegEI = NegEI/(1.0 + np.sum(EV_norm))
+                conNegEI = NegEI/(1.0 + np.sum(EV/M))
+            else:
+                conNegEI = NegEI
 
             P = 0.0
-
-            if self.options['concave_EI']: #Locally makes ei concave to get rid of flat objective space
+            # if self.options['concave_EI']: #Locally makes ei concave to get rid of flat objective space
+            if con_EI:
+                con_fac = self.con_fac
                 for ii in range(k):
                     P += con_fac[ii]*(lb[ii] - xval[ii])*(ub[ii] - xval[ii])
 
             f = conNegEI + P
+
+            # # START OF RADIAL PENALIZATION ADDENDUM
+            # pfactor = self.options['penalty_factor']
+            # width = self.options['penalty_width']
+            # for xbad in self.bad_samples:
+            #     f += pfactor * np.sum(np.exp(-1./width**2 * (xbad - xval)**2))
+            # # END OF RADIAL PENALIZATION ADDENDUM
 
         #print(xI, f)
         return f
@@ -1277,7 +1354,7 @@ def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
         ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
 
     if abs(SSqr) <= 1.0e-6:
-        NegEI = 0.0
+        NegEI = np.array([0.0])
     else:
         dy = y_min - y_hat
         SSqr = abs(SSqr)
@@ -1312,7 +1389,7 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
                           ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
 
     if abs(gSSqr) <= 1.0e-6:
-        EV = 0.0
+        EV =  np.array([0.0])
     else:
         # Calculate expected violation
         dg = g_hat - g_min
@@ -1323,7 +1400,7 @@ def calc_conEV_norm(xval, con_surrogate, gSSqr=None, g_hat=None):
 
     return EV
 
-def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt):
+def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, nodeHist, ubd_count):
     pts = (xU_iter-xL_iter) + 1.0
     com_enum = np.prod(pts, axis=0)
     tot_pts = 0.0
@@ -1363,9 +1440,29 @@ def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt):
             xL_iter, xU_iter, enum = new_nodes[ii]
             tot_pts += enum
             args.append((xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                         xopt, ii+1))
+                         xopt, ii+1, nodeHist, ubd_count))
     else:
         args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                xopt, 0)]
+                xopt, 0, nodeHist, ubd_count)]
 
     return args
+
+class nodeHistclass():
+    def __init__(self):
+        self.ubd_track = np.array([1])
+        self.ubdloc_best = np.inf
+        self.priority_flag = 0
+
+def concave_factor(xI_lb,xI_ub,surrogate):
+    xL = (xI_lb - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
+    xU = (xI_ub - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
+    per_htm = 0.0
+    con_fac = np.zeros((len(xL),))
+    for k in range(len(xL)):
+        if np.abs(xL[k] - xU[k]) > 1.0e-6:
+            h_req = (per_htm/100)*(xU[k]-xL[k])
+            xm = (xL[k] + xU[k])*0.5
+            h_act = (xm-xL[k])*(xm-xU[k])
+            con_fac[k] = h_req/h_act
+    # print(con_fac)
+    return con_fac
