@@ -114,6 +114,8 @@ class AMIEGO_driver(Driver):
         cont_opt = self.cont_opt
         cont_opt._setup()
         cont_opt.record_name = self.record_name + ':' + cont_opt.record_name
+        cont_opt.dv_conversions = self.dv_conversions
+        cont_opt.fn_conversions = self.fn_conversions
 
         if 'disp' in cont_opt.options:
             cont_opt.options['disp'] = self.options['disp']
