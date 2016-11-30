@@ -498,7 +498,7 @@ class Branch_and_Bound(Driver):
 
                 # Print the traceback if it fails
                 if not result[0]:
-                    print(result[0][1])
+                    print(result[1])
 
                 new_UBD, new_fopt, new_xopt, new_nodes = result[0]
 
