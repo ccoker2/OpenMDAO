@@ -173,7 +173,7 @@ class Branch_and_Bound(Driver):
                        'messages.')
         opt.add_option('ftol', 1.0e-4, lower=0.0,
                        desc='Absolute tolerance for sub-optimizations.')
-        opt.add_option('maxiter', 50000, lower=0.0,
+        opt.add_option('maxiter', 100000, lower=0.0,
                        desc='Maximum number of iterations.')
         opt.add_option('penalty_factor', 3.0,
                        desc='Penalty weight on objective using radial functions.')
@@ -181,7 +181,7 @@ class Branch_and_Bound(Driver):
                        desc='Penalty width on objective using radial functions.')
         opt.add_option('trace_iter', 10,
                        desc='Number of generations to trace back for ubd.')
-        opt.add_option('maxiter_ubd', 3000,
+        opt.add_option('maxiter_ubd', 10000,
                        desc='Number of generations ubd stays the same')
         opt.add_option('use_surrogate', False,
                        desc='Use surrogate model for the optimization. Training '
@@ -622,10 +622,10 @@ class Branch_and_Bound(Driver):
                     x = dv_dict['x']
                     # Objective
                     func_dict = {}
-                    confac_flag = True
-                    func_dict['obj'] = self.objective_callback(x,confac_flag)[0]
+                    confac_flag = False
+                    func_dict['obj'] = self.objective_callback(x)[0]
                     return func_dict, fail
-                    
+
                 xC_iter = xloc_iter
                 opt_x, opt_f, succ_flag, msg = snopt_opt2(_objcall, xC_iter, xL_iter, xU_iter, title='LocalSearch',
                                          options={'Major optimality tolerance' : 1.0e-8})
@@ -635,12 +635,6 @@ class Branch_and_Bound(Driver):
                 if floc_iter_new < floc_iter:
                     floc_iter = floc_iter_new
                     xloc_iter = xloc_iter_new
-
-                # if not optResult.success:
-                #     efloc_iter = False
-                #     floc_iter = np.inf
-                # else:
-                #     efloc_iter = True
         #--------------------------------------------------------------
         # Step 3: Partition the current rectangle as per the new
         # branching scheme.
@@ -681,8 +675,8 @@ class Branch_and_Bound(Driver):
                         NegEI = calc_conEI_norm([], obj_surrogate, SSqr=sU, y_hat=yL)
 
                         M = len(self.con_surrogate)
-                        EV = np.zeros([M, 1])
-
+                        if M>0:
+                            EV = np.zeros([M, 1])
                         # Expected constraint violation
                         for mm in range(M):
                             x_comL, x_comU, Ain_hat, bin_hat = gen_coeff_bound(lb, ub, con_surrogate[mm])
@@ -716,11 +710,10 @@ class Branch_and_Bound(Driver):
                         LBD_NegConEI = np.inf
                     dis_flag[ii] = 'F'
                 else:
-                    EV_mean = np.mean(EV, axis=0)
-                    EV_std = np.std(EV, axis=0)
-                    EV_std[EV_std == 0.] = 1.
-                    EV_norm = (EV - EV_mean) / EV_std
-                    LBD_NegConEI = max(NegEI/(1.0 + np.sum(EV_norm)), LBD_prev)
+                    if M>0:
+                        LBD_NegConEI = max(NegEI/(1.0 + np.sum(EV/M)), LBD_prev)
+                    else:
+                        LBD_NegConEI = max(NegEI, LBD_prev)
 
                 #--------------------------------------------------------------
                 # Step 5: Store any new node inside the active set that has LBD
@@ -819,14 +812,11 @@ class Branch_and_Bound(Driver):
                 for mm in range(M):
                     EV[mm] = calc_conEV_norm(xval, con_surrogate[mm])
 
-            EV_mean = np.mean(EV, axis=0)
-            EV_std = np.std(EV, axis=0)
-            EV_std[EV_std == 0.] = 1.
-            EV_norm = (EV - EV_mean) / EV_std
-            conNegEI = NegEI/(1.0 + np.sum(EV_norm))
+                conNegEI = NegEI/(1.0 + np.sum(EV/M))
+            else:
+                conNegEI = NegEI
 
             P = 0.0
-
             # if self.options['concave_EI']: #Locally makes ei concave to get rid of flat objective space
             if con_EI:
                 con_fac = self.con_fac
@@ -835,12 +825,12 @@ class Branch_and_Bound(Driver):
 
             f = conNegEI + P
 
-            # START OF RADIAL PENALIZATION ADDENDUM
-            pfactor = self.options['penalty_factor']
-            width = self.options['penalty_width']
-            for xbad in self.bad_samples:
-                f += pfactor * np.sum(np.exp(-1./width**2 * (xbad - xval)**2))
-            # END OF RADIAL PENALIZATION ADDENDUM
+            # # START OF RADIAL PENALIZATION ADDENDUM
+            # pfactor = self.options['penalty_factor']
+            # width = self.options['penalty_width']
+            # for xbad in self.bad_samples:
+            #     f += pfactor * np.sum(np.exp(-1./width**2 * (xbad - xval)**2))
+            # # END OF RADIAL PENALIZATION ADDENDUM
 
         #print(xI, f)
         return f
@@ -1466,7 +1456,7 @@ class nodeHistclass():
 def concave_factor(xI_lb,xI_ub,surrogate):
     xL = (xI_lb - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
     xU = (xI_ub - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
-    per_htm = 0.5
+    per_htm = 0.0
     con_fac = np.zeros((len(xL),))
     for k in range(len(xL)):
         if np.abs(xL[k] - xU[k]) > 1.0e-6:
