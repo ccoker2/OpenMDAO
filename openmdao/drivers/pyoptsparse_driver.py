@@ -206,8 +206,9 @@ class pyOptSparseDriver(Driver):
 
         # Calculate and save gradient for any linear constraints.
         lcons = self.get_constraints(lintype='linear').keys()
+        self._problem = problem
         if len(lcons) > 0:
-            self.lin_jacs = problem.calc_gradient(indep_list, lcons,
+            self.lin_jacs = self.calc_gradient(indep_list, lcons,
                                                   return_format='dict')
             #print("Linear Gradient")
             #print(self.lin_jacs)
@@ -289,7 +290,6 @@ class pyOptSparseDriver(Driver):
         for option, value in self.opt_settings.items():
             opt.setOption(option, value)
 
-        self._problem = problem
         self.opt_prob = opt_prob
 
         # Execute the optimization problem
