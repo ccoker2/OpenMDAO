@@ -51,7 +51,8 @@ def obj_cons_calc(xC_val, xI, xC_num_des, xClb, xCub, newac, existac, network):
     BH_1j = BH[1:]
     # Calculate the profit & the constraints
     profit = 0.0
-    g = np.zeros([2+num_ac+num_route,1])
+    g = np.zeros((2+num_ac,1))
+    g_linineq = np.zeros((num_route,1))
     g[0,0] = (TD/8500.0)
     g[1,0] = (LD/7000.0)
     # Add more performance constraints (like fuselage fuel capacity, landing gear length etc) for the production run
@@ -77,18 +78,19 @@ def obj_cons_calc(xC_val, xI, xC_num_des, xClb, xCub, newac, existac, network):
             con_val += x_kj*(BH_kj*(1.0+MH_FH_kj) + 1.0)
 
         g[cc+1,0] = (con_val/(12*AC_num[kk]))
-        cc = cc + 1
+        cc += 1
 
-    # For the linear constraints. TODO Feed this as linear inequalities to SNOPT
+    # For the linear constraints.
+    cc = 0
     for jj in range(num_route):
         pax_j = 0.0
         for kk in range(num_ac):
             x_kj = trip[kk*num_route + jj]
             pax_j += x_kj*pax[kk*num_route + jj]
-        g[cc+1,0] = (pax_j/dem[jj])
-        cc=cc+1
+        g_linineq[cc,0] = pax_j/dem[jj]
+        cc += 1
 
-    return profit, g
+    return profit, g, g_linineq
 
 def FLOPSInputGen(x_con,mission_route,mission_pax,newac,Filename):
     '''Generate the input deck for FLOPS'''
@@ -262,9 +264,9 @@ def ReadFLOPSOutput(Filename):
                 eflag = 0
         line = fid.readline()
     fid.close
-    os.remove(fname)
-    fnameIN = Filename + '.in'
-    os.remove(fnameIN)
+    # os.remove(fname)
+    # fnameIN = Filename + '.in'
+    # os.remove(fnameIN)
     return TD, LD, TOC, BH, acdata_count, nan_count
 
 class NewAC():
@@ -272,7 +274,7 @@ class NewAC():
         # Intermediate inputs about the 'yet-to-be-designed' aircraft
         self.num_des = 6 #Number of aircraft design variables
         self.Filename = '/home/roger/a/roy10/Amiego_TestFiles/FLOPS_Files/AC_New' #A better version of B737-8ish aircraft
-        self.AC_num_new = np.array([25])
+        self.AC_num_new = np.array([5])
         self.MH_new = 0.948
         self.DESRNG = 2940.0
         self.GW = 174900.0
@@ -286,7 +288,7 @@ class NewAC():
 class ExistingAC():
     def __init__(self):
         self.AC_name = ['B757-200']
-        self.AC_num=np.array([25])
+        self.AC_num=np.array([8])
         self.seat_cap=np.array([180.0])
         self.des_range=np.array([2800.0])
         self.MH_FH=np.array([0.948])
@@ -339,7 +341,8 @@ class DesAllocFLOPS_1new1ex_3rt(Component):
 
         # Outputs
         self.add_output('profit', val=0.0)
-        self.add_output('g_val', val=np.zeros((2+self.num_ac+self.num_route,)))
+        self.add_output('g_val', val=np.zeros((2+self.num_ac,)))
+        self.add_output('g_val_linineq', val=np.zeros((self.num_route,)))
 
     def solve_nonlinear(self, params, unknowns, resids):
         """ Define the function f(xI, xC)
@@ -349,13 +352,15 @@ class DesAllocFLOPS_1new1ex_3rt(Component):
         xI = params['xI']
 
         if MPI.COMM_WORLD.rank == 0:
-            profit, g = obj_cons_calc(xC, xI, self.xC_num_des, self.xClb, self.xCub, self.newac, self.existac, self.network)
+            profit, g, g_linineq = obj_cons_calc(xC, xI, self.xC_num_des, self.xClb, self.xCub, self.newac, self.existac, self.network)
         else:
             profit = 0.0
-            g = np.zeros((2+self.num_ac+self.num_route,))
+            g = np.zeros((2+self.num_ac,))
+            g_linineq = np.zeros((self.num_route,))
 
         profit = MPI.COMM_WORLD.allgather(profit)[0]
         g = MPI.COMM_WORLD.allgather(g)[0]
 
         unknowns['profit'] = profit/-1.0e3
         unknowns['g_val'] = g
+        unknowns['g_val_linineq'] = g_linineq
