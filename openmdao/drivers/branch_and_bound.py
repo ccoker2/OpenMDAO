@@ -604,7 +604,8 @@ class Branch_and_Bound(Driver):
         floc_iter = self.objective_callback(xloc_iter)
         #Sample few more points based on ubd_count and priority_flag
         agg_fac = [0.5,1.0,1.5]
-        num_samples = np.round(agg_fac[int(np.floor(ubd_count/1000))]*(1 + 3*nodeHist.priority_flag)*3*num_des)
+        ubd_denom = self.options['maxiter_ubd']/3.0
+        num_samples = np.round(agg_fac[int(np.floor(ubd_count/ubd_denom))]*(1 + 3*nodeHist.priority_flag)*3*num_des)
         for ii in range(int(num_samples)):
             xloc_iter_new = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter))
             floc_iter_new = self.objective_callback(xloc_iter_new)
