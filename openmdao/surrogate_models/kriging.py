@@ -9,7 +9,7 @@ from six.moves import zip, range
 
 from openmdao.surrogate_models.surrogate_model import SurrogateModel
 from openmdao.test.util import set_pyoptsparse_opt
-from openmdao.util.concurrent import concurrent_eval_lb
+from openmdao.util.concurrent import concurrent_eval_lb, concurrent_eval
 
 MACHINE_EPSILON = np.finfo(np.double).eps
 
@@ -188,8 +188,10 @@ class KrigingSurrogate(SurrogateModel):
         if comm.size < 2:
             comm = None
         cases = [([pt], None) for pt in start_point]
-        results = concurrent_eval_lb(self._calculate_thetas, cases,
-                                     comm, broadcast=True)
+        #results = concurrent_eval_lb(self._calculate_thetas, cases,
+        #                             comm, broadcast=True)
+        results = concurrent_eval(self._calculate_thetas, cases,
+                                  comm, allgather=True)
 
         thetas = [item[0][0] for item in results]
         fval = [item[0][1] for item in results]

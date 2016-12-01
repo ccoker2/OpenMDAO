@@ -175,7 +175,7 @@ class Branch_and_Bound(Driver):
                        desc='Absolute tolerance for sub-optimizations.')
         opt.add_option('maxiter', 100000, lower=0.0,
                        desc='Maximum number of iterations.')
-        opt.add_option('penalty_factor', 3.0,
+        opt.add_option('penalty_factor', 0.0,
                        desc='Penalty weight on objective using radial functions.')
         opt.add_option('penalty_width', 0.5,
                        desc='Penalty width on objective using radial functions.')
@@ -833,9 +833,10 @@ class Branch_and_Bound(Driver):
             # START OF RADIAL PENALIZATION ADDENDUM
             pfactor = self.options['penalty_factor']
             width = self.options['penalty_width']
-            for xbad in self.bad_samples:
-                xbad_norm = (xbad - obj_surrogate.X_mean.flatten())/obj_surrogate.X_std.flatten()
-                f += pfactor * np.sum(np.exp(-1./width**2 * (xbad_norm - xval)**2))
+            if pfactor != 0:
+                for xbad in self.bad_samples:
+                    xbad_norm = (xbad - obj_surrogate.X_mean.flatten())/obj_surrogate.X_std.flatten()
+                    f += pfactor * np.sum(np.exp(-1./width**2 * (xbad_norm - xval)**2))
             # END OF RADIAL PENALIZATION ADDENDUM
 
         #print(xI, f)
