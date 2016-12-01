@@ -275,7 +275,7 @@ class AMIEGO_driver(Driver):
 
                     #Samples should be bounded in an unit hypercube [0,1]
                     x_i_0 = self.sampling[var][i_train, :]
-                    del_fac = 2.0
+                    del_fac = 0.0 #TODO This is the deafult. Set is to 2.0/3.0 for the des-alloc problem.
                     xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower-del_fac))
                     # xx_i_hat[i:j] = (xx_i[i:j] - lower)/(upper - lower)
                 x_i.append(xx_i)
