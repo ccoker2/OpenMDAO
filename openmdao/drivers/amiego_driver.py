@@ -361,6 +361,7 @@ class AMIEGO_driver(Driver):
             # Step 3: Build the surrogate models
             #------------------------------------------------------------------
             obj_surrogate = self.surrogate()
+            obj_surrogate.comm = problem.root.comm
             obj_surrogate.use_snopt = True
             print(x_i)
             obj_surrogate.train(x_i, obj, KPLS_status=True)
@@ -394,6 +395,7 @@ class AMIEGO_driver(Driver):
 
                 for j in range(val.shape[1]):
                     con_surr = self.surrogate()
+                    con_surr.comm = problem.root.comm
                     con_surr.use_snopt = True
 
                     if double_sided:

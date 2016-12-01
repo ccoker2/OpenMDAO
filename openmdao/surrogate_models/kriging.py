@@ -9,6 +9,7 @@ from six.moves import zip, range
 
 from openmdao.surrogate_models.surrogate_model import SurrogateModel
 from openmdao.test.util import set_pyoptsparse_opt
+from openmdao.util.concurrent import concurrent_eval_lb, concurrent_eval
 
 MACHINE_EPSILON = np.finfo(np.double).eps
 
@@ -102,6 +103,9 @@ class KrigingSurrogate(SurrogateModel):
         self.Wstar = np.identity(0)
         self.pcom=0
 
+        # Hack: Put the comm here
+        self.comm = None
+
     def train(self, x, y, KPLS_status=False):
         """
         Train the surrogate model with the given set of inputs and outputs.
@@ -154,81 +158,48 @@ class KrigingSurrogate(SurrogateModel):
             if self.pcom >= 3:
                 num_start = 5*self.pcom
                 #TODO: Read this from a file
-                start_point = np.array([[0.5,0.5714,0.5714],[0.6429,0.0714,0.3571],[0.9286,0.7857,0.7857],\
-                [0.3571,0.7143,0.1429],[0.8571,0.2857,0.6429],[0.7857,0.8571,0.2857],[0.0714,0.6429,0.8571],\
-                [1.0,0.0,0.0714],[0.2857,0.2143,0.7143],[0.,0.4286,0.4286],[0.5714,0.3571,1.0],[0.2143,1.0,0.5],\
-                [0.1429,0.1429,0.2143],[0.7143,0.5,0.0],[0.4286,0.9286,0.9286]])
+                start_point = [[0.5, 0.5714, 0.5714],
+                               [0.6429, 0.0714, 0.3571],
+                               [0.9286, 0.7857, 0.7857],
+                               [0.3571, 0.7143, 0.1429],
+                               [0.8571, 0.2857, 0.6429],
+                               [0.7857, 0.8571, 0.2857],
+                               [0.0714, 0.6429, 0.8571],
+                               [1.0, 0.0, 0.0714],
+                               [0.2857, 0.2143, 0.7143],
+                               [0., 0.4286, 0.4286],
+                               [0.5714, 0.3571, 1.0],
+                               [0.2143, 1.0, 0.5],
+                               [0.1429, 0.1429, 0.2143],
+                               [0.7143, 0.5, 0.0],
+                               [0.4286, 0.9286, 0.9286]]
             else:
                 num_start = 3
-                start_point = np.array([[0.25],[0.5],[0.75]])
+                start_point = [[0.25], [0.5], [0.75]]
         else:
             self.Wstar = np.identity(self.n_dims)
             self.pcom = self.n_dims
             num_start = 3
-            start_point = np.array([[0.25],[0.5],[0.75]])
+            start_point = [[0.25], [0.5], [0.75]]
 
         # Multi-start approach (starting from 10*pcom_max different locations)
-        #FIXME: Parallelize this multi-start
-        best_loglike = np.inf
         #Start from random locations
-        for ii in range(num_start):
-            x0 = -3.0*np.ones((self.pcom, )) + start_point[ii]*(5.0*np.ones((self.pcom, )))
-            if self.use_snopt:
-                def _calcll(dv_dict):
-                    """ Callback function"""
-                    fail = 0
-                    thetas = dv_dict['thetas']
-                    x = np.dot((self.Wstar**2),(10**thetas).T).flatten()
-                    loglike = self._calculate_reduced_likelihood_params(x)[0]
+        comm = self.comm
+        if comm.size < 2:
+            comm = None
+        cases = [([pt], None) for pt in start_point]
+        #results = concurrent_eval_lb(self._calculate_thetas, cases,
+        #                             comm, broadcast=True)
+        results = concurrent_eval(self._calculate_thetas, cases,
+                                  comm, allgather=True)
 
-                    # Objective
-                    func_dict = {}
-                    func_dict['obj'] = -loglike
+        thetas = [item[0][0] for item in results]
+        fval = [item[0][1] for item in results]
 
-                    return func_dict, fail
+        idx = fval.index(min(fval))
+        self.thetas = np.dot((self.Wstar**2),thetas[idx].T).flatten()
 
-                low = -3.0*np.ones([self.pcom, 1])
-                high = 2.0*np.ones([self.pcom, 1])
-                # print("Using SNOPT!")
-                opt_x, opt_f, succ_flag, msg = snopt_opt(_calcll, x0, low, high, title='kriging',
-                                                         options={'Major optimality tolerance' : 1.0e-6})
-
-                if not succ_flag:
-                    print("SNOPT failed to converge.", msg)
-                    opt_f = 1.0
-                    pass
-                    #raise ValueError('Kriging Hyper-parameter optimization failed: {0}'.format(msg))
-
-                thetas = np.asarray(10**opt_x).flatten()
-                fval = opt_f
-            else:
-
-                def _calcll(thetas):
-                    """ Callback function"""
-                    x = np.dot((self.Wstar**2),(10**thetas).T).flatten()
-                    loglike = self._calculate_reduced_likelihood_params(x)[0]
-                    return -loglike
-
-                bounds = [(-3.0, 2.0) for _ in range(self.pcom)]
-                # print("Using Cobyla")
-                optResult = minimize(_calcll, x0, method='cobyla',
-                                     options={'ftol': 1e-6},
-                                     bounds=bounds)
-
-                if not optResult.success:
-                    print("Cobyla failed to converge", optResult.success)
-                    optResult.fun = 1.0
-                    pass
-                    #raise ValueError('Kriging Hyper-parameter optimization failed: {0}'.format(optResult.message))
-
-                thetas = 10**optResult.x.flatten()
-                fval = optResult.fun
-
-            if best_loglike > fval:
-                best_loglike = fval*1.0
-                self.thetas = np.dot((self.Wstar**2),thetas.T).flatten()
-
-        print("BestLogLike: ",best_loglike)
+        print("BestLogLike: ", fval)
 
         _, params = self._calculate_reduced_likelihood_params()
         self.c_r = params['c_r']
@@ -238,6 +209,70 @@ class KrigingSurrogate(SurrogateModel):
         self.mu = params['mu']
         self.SigmaSqr = params['SigmaSqr']
         self.R_inv = params['R_inv']
+
+    def _calculate_thetas(self, point):
+        """ Optimization to solve for hyperparameters. This has been
+        parallelized so that the best value can be found from a set of
+        optimization starting points.
+
+        Args
+        ----
+        point: list
+            Starting point for opt."""
+
+        x0 = -3.0*np.ones((self.pcom, )) + point*(5.0*np.ones((self.pcom, )))
+        if self.use_snopt:
+            def _calcll(dv_dict):
+                """ Callback function"""
+                fail = 0
+                thetas = dv_dict['thetas']
+                x = np.dot((self.Wstar**2),(10**thetas).T).flatten()
+                loglike = self._calculate_reduced_likelihood_params(x)[0]
+
+                # Objective
+                func_dict = {}
+                func_dict['obj'] = -loglike
+
+                return func_dict, fail
+
+            low = -3.0*np.ones([self.pcom, 1])
+            high = 2.0*np.ones([self.pcom, 1])
+            # print("Using SNOPT!")
+            opt_x, opt_f, succ_flag, msg = snopt_opt(_calcll, x0, low, high, title='kriging',
+                                                     options={'Major optimality tolerance' : 1.0e-6})
+
+            if not succ_flag:
+                print("SNOPT failed to converge.", msg)
+                opt_f = 1.0
+                pass
+                #raise ValueError('Kriging Hyper-parameter optimization failed: {0}'.format(msg))
+
+            thetas = np.asarray(10**opt_x).flatten()
+            fval = opt_f
+        else:
+
+            def _calcll(thetas):
+                """ Callback function"""
+                x = np.dot((self.Wstar**2),(10**thetas).T).flatten()
+                loglike = self._calculate_reduced_likelihood_params(x)[0]
+                return -loglike
+
+            bounds = [(-3.0, 2.0) for _ in range(self.pcom)]
+            # print("Using Cobyla")
+            optResult = minimize(_calcll, x0, method='cobyla',
+                                 options={'ftol': 1e-6},
+                                 bounds=bounds)
+
+            if not optResult.success:
+                print("Cobyla failed to converge", optResult.success)
+                optResult.fun = 1.0
+                pass
+                #raise ValueError('Kriging Hyper-parameter optimization failed: {0}'.format(optResult.message))
+
+            thetas = 10**optResult.x.flatten()
+            fval = optResult.fun
+
+        return thetas, fval
 
     def _calculate_reduced_likelihood_params(self, thetas=None):
         """
