@@ -490,8 +490,8 @@ class Branch_and_Bound(Driver):
                                           comm, allgather=True)
 
             itercount += len(args)
-            print(results)
-            exit()
+            # print(results)
+            # exit()
             if UBD < -1.0e-3:
                 ubd_count += len(args)
             # Put all the new nodes into active set.

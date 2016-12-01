@@ -13,11 +13,9 @@ import subprocess
 import os
 from mpi4py import MPI
 
-def obj_cons_calc(xC_val, xI, xC_num_des, xClb, xCub, newac, existac, network):
+def obj_cons_calc(xC, xI, xC_num_des, newac, existac, network):
     """ Calculate fleet-level profit of the airline and the aircraft performance constraints"""
-
-    xC = xClb + xC_val.flatten()*(xCub - xClb)
-
+    # xC = xClb + xC_val.flatten()*(xCub - xClb)
     Filename = newac.Filename
     num_route = network.num_route
     price = network.price
@@ -272,9 +270,9 @@ def ReadFLOPSOutput(Filename):
 class NewAC():
     def __init__(self):
         # Intermediate inputs about the 'yet-to-be-designed' aircraft
-        self.num_des = 6 #Number of aircraft design variables
+        # self.num_des = 6 #Number of aircraft design variables
         self.Filename = '/home/roger/a/roy10/Amiego_TestFiles/FLOPS_Files/AC_New' #A better version of B737-8ish aircraft
-        self.AC_num_new = np.array([5])
+        self.AC_num_new = np.array([3])
         self.MH_new = 0.948
         self.DESRNG = 2940.0
         self.GW = 174900.0
@@ -288,7 +286,7 @@ class NewAC():
 class ExistingAC():
     def __init__(self):
         self.AC_name = ['B757-200']
-        self.AC_num=np.array([8])
+        self.AC_num=np.array([6])
         self.seat_cap=np.array([180.0])
         self.des_range=np.array([2800.0])
         self.MH_FH=np.array([0.948])
@@ -302,7 +300,13 @@ class ExistingAC():
 
 class NetworkData():
     def __init__(self,num_route):
+        self.num_route = num_route
         if num_route == 3:
+            self.route = np.array([2000.0, 1500.0, 1000.0])
+            self.dem = np.array([300.0, 700.0, 220.0])
+            self.price = np.array([463.1, 372.4, 282.9])
+            self.num_route = num_route
+        elif num_route == 11:
             self.route = np.array([2000.0, 1500.0, 1000.0])
             self.dem = np.array([300.0, 700.0, 220.0])
             self.price = np.array([463.1, 372.4, 282.9])
@@ -312,27 +316,34 @@ class DesAllocFLOPS_1new1ex_3rt(Component):
 
     def __init__(self):
         super(DesAllocFLOPS_1new1ex_3rt, self).__init__()
-        self.num_ac = 2 #New + existing aircraft
+        #Define the problem here
+        self.num_ac = 2 #Total number of aircraft types (New + existing aircraft)
         self.num_route = 3 #Number of route
         self.xC_num_des = 6 # Number of aircraft design variables - 1.AR 2.TR 3.t2c 4.Area 5.Sweep[deg] 6.ThrustperEngine[lbs]
+        self.existAC_index = [1] # Index of existing aircraft types - 1. B757-200 2.
 
         # Continuous Inputs
-        self.add_param('xC', np.zeros((6+self.num_ac*self.num_route,)),
-                       desc='Continuous type design variables of the des-alloc problem.\
-                        6 aircraft design and 6 allocation variables')
+        self.add_param('xC', np.zeros((self.xC_num_des + self.num_ac*self.num_route,)),
+                       desc='Continuous type design variables of the des-alloc problem.')
 
         # Integer Inputs
         self.add_param('xI', np.ones((self.num_ac*self.num_route,)), lower=0, upper=6,
-                       desc='Number of trips by aircraft type k on route j')
+                       desc='Integer type design variables of the des-alloc problem')
 
-        #Lower and upper bound of the continuous design-allocation variables [for scaling]
-        self.xClb = np.array([8.0,0.1,0.009,1000.0,0.5,20000.0,0.0,0.0,0.0,0.0,0.0,0.0])
-        self.xCub = np.array([12.0,0.5,0.17,2000.0,40.0,30000.0,162.0,162.0,162.0,162.0,162.0,162.0])
+        # #Lower and upper bound of the continuous design-allocation variables
+        # xClb_des = np.array([8.0,0.1,0.009,1000.0,0.5,20000.0])
+        # xCub_des = np.array([12.0,0.5,0.17,2000.0,40.0,30000.0])
+        #
+        # xClb_alloc = np.zeros([self.num_ac*self.num_route])
+        # xCub_alloc = np.array([162.0,162.0,162.0,180.0,180.0,180.0])
+        #
+        # self.xClb = np.concatenate((xClb_des,xClb_alloc),axis=0)
+        # self.xCub = np.concatenate((xCub_des,xCub_alloc),axis=0)
 
         #TODO: In the future release read below from a file
         # New aircraft
         self.newac = NewAC()
-        # Existint aircraft
+        # Existing aircraft
         self.existac = ExistingAC()
         # Network data
         self.network = NetworkData(self.num_route)
@@ -352,7 +363,8 @@ class DesAllocFLOPS_1new1ex_3rt(Component):
         xI = params['xI']
 
         if MPI.COMM_WORLD.rank == 0:
-            profit, g, g_linineq = obj_cons_calc(xC, xI, self.xC_num_des, self.xClb, self.xCub, self.newac, self.existac, self.network)
+            # profit, g, g_linineq = obj_cons_calc(xC, xI, self.xC_num_des, self.xClb, self.xCub, self.newac, self.existac, self.network)
+            profit, g, g_linineq = obj_cons_calc(xC, xI, self.xC_num_des, self.newac, self.existac, self.network)
         else:
             profit = 0.0
             g = np.zeros((2+self.num_ac,))

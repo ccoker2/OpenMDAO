@@ -275,7 +275,7 @@ class AMIEGO_driver(Driver):
 
                     #Samples should be bounded in an unit hypercube [0,1]
                     x_i_0 = self.sampling[var][i_train, :]
-                    del_fac = 3.0
+                    del_fac = 2.0
                     xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower-del_fac))
                     # xx_i_hat[i:j] = (xx_i[i:j] - lower)/(upper - lower)
                 x_i.append(xx_i)
@@ -309,7 +309,8 @@ class AMIEGO_driver(Driver):
                 t0 = time()
 
             for i_run in range(c_start, c_end):
-
+                if disp:
+                    print("Optimizing for the given integer/discrete type design variables:", x_i[i_run])
                 # Set Integer design variables
                 for var in self.i_dvs:
                     i, j = self.i_idx[var]
@@ -322,10 +323,9 @@ class AMIEGO_driver(Driver):
                 # Optimize continuous variables
                 cont_opt.run(problem)
                 eflag_conopt = cont_opt.success
-                print(x_i[i_run])
-
+                if disp:
+                    print("Exit flag: ",eflag_conopt)
                 if not eflag_conopt:
-                    print(eflag_conopt)
                     self.minlp.bad_samples.append(x_i[i_run])
 
                 if not eflag_conopt:
@@ -336,10 +336,8 @@ class AMIEGO_driver(Driver):
                 obj_name = list(current_objs.keys())[0]
                 current_obj = current_objs[obj_name].copy()
                 obj.append(current_obj)
-                print(current_obj)
                 for name, value in iteritems(self.get_constraints()):
                     cons[name].append(value.copy())
-                print(cons)
                 # If best solution, save it
                 if eflag_conopt and current_obj < best_obj:
                     best_obj = current_obj
@@ -354,11 +352,11 @@ class AMIEGO_driver(Driver):
 
                     for name in self.c_dvs:
                         best_cont_design[name] = desvars[name].copy()
-                exit()
+
             if disp:
                 print('Elapsed Time:', time() - t0)
                 print("======================ContinuousOptimization-End=======================================")
-            exit()
+            # exit()
             #------------------------------------------------------------------
             # Step 3: Build the surrogate models
             #------------------------------------------------------------------
