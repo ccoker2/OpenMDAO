@@ -209,7 +209,7 @@ class pyOptSparseDriver(Driver):
         self._problem = problem
         if len(lcons) > 0:
             self.lin_jacs = self.calc_gradient(indep_list, lcons,
-                                                  return_format='dict')
+                                               return_format='dict')
             #print("Linear Gradient")
             #print(self.lin_jacs)
 
