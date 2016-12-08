@@ -352,6 +352,7 @@ class AMIEGO_driver(Driver):
             if disp:
                 print('Elapsed Time:', time() - t0)
                 print("======================ContinuousOptimization-End=======================================")
+                t0 = time()
 
             #------------------------------------------------------------------
             # Step 3: Build the surrogate models
@@ -409,7 +410,8 @@ class AMIEGO_driver(Driver):
                     con_surrogate.append(con_surr)
 
             if disp:
-                print("\nSurrogate building of the objective is complete...")
+                print("\nSurrogate building of the objective and constraints is complete...")
+                print('Elapsed Time:', time() - t0)
 
             #------------------------------------------------------------------
             # Step 4: Maximize the expected improvement function to obtain an
