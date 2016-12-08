@@ -7,6 +7,7 @@ import scipy.linalg as linalg
 from scipy.optimize import minimize
 from six.moves import zip, range
 
+from openmdao.core.mpi_wrap import FakeComm
 from openmdao.surrogate_models.surrogate_model import SurrogateModel
 from openmdao.test.util import set_pyoptsparse_opt
 from openmdao.util.concurrent import concurrent_eval_lb, concurrent_eval
@@ -28,7 +29,7 @@ def snopt_opt(objfun, desvar, lb, ub, title=None, options=None,
     else:
         raise(RuntimeError, 'Need pyoptsparse to run the SNOPT sub optimizer.')
 
-    opt_prob = Optimization(title, objfun)
+    opt_prob = Optimization(title, objfun, comm=FakeComm())
 
     ndv = len(desvar)
 
@@ -48,7 +49,7 @@ def snopt_opt(objfun, desvar, lb, ub, title=None, options=None,
     opt.setOption('Major iterations limit', 100)
     opt.setOption('Verify level', -1)
     opt.setOption('iSumm', 0)
-    #opt.setOption('iPrint', 0)
+    opt.setOption('iPrint', 0)
 
     sol = opt(opt_prob, sens=sens, sensStep=1.0e-6)
     #print(sol)
