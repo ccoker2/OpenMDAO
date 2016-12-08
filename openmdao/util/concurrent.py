@@ -1,5 +1,8 @@
 
+from __future__ import print_function
+
 import os
+from time import time
 import traceback
 from itertools import chain, islice
 
@@ -136,6 +139,7 @@ def _concurrent_eval_lb_worker(func, comm):
         if args is None: # we're done
             break
 
+        t0 = time()
         try:
             if kwargs:
                 retval = func(*args, **kwargs)
@@ -146,6 +150,8 @@ def _concurrent_eval_lb_worker(func, comm):
             retval = None
         else:
             err = None
+
+        print("Time on this rank:", time()-t0)
 
         # tell the master we're done with that case
         comm.send((comm.rank, retval, err), 0, tag=2)
