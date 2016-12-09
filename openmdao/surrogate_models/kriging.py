@@ -189,18 +189,19 @@ class KrigingSurrogate(SurrogateModel):
         if comm.size < 2:
             comm = None
         cases = [([pt], None) for pt in start_point]
-        #results = concurrent_eval_lb(self._calculate_thetas, cases,
-        #                             comm, broadcast=True)
-        results = concurrent_eval(self._calculate_thetas, cases,
-                                  comm, allgather=True)
+        results = concurrent_eval_lb(self._calculate_thetas, cases,
+                                     comm, broadcast=True)
+        #results = concurrent_eval(self._calculate_thetas, cases,
+        #                          comm, allgather=True)
+
 
         thetas = [item[0][0] for item in results]
         fval = [item[0][1] for item in results]
 
         idx = fval.index(min(fval))
-        self.thetas = np.dot((self.Wstar**2),thetas[idx].T).flatten()
+        self.thetas = np.dot((self.Wstar**2), thetas[idx].T).flatten()
 
-        print("BestLogLike: ", fval)
+        print("BestLogLike: ", fval[idx])
 
         _, params = self._calculate_reduced_likelihood_params()
         self.c_r = params['c_r']
