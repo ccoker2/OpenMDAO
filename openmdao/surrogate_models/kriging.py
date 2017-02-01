@@ -186,7 +186,7 @@ class KrigingSurrogate(SurrogateModel):
         # Multi-start approach (starting from 10*pcom_max different locations)
         #Start from random locations
         comm = self.comm
-        if comm.size < 2:
+        if comm is not None and comm.size < 2:
             comm = None
         cases = [([pt], None) for pt in start_point]
         results = concurrent_eval_lb(self._calculate_thetas, cases,
