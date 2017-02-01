@@ -209,12 +209,13 @@ class TestNewton(unittest.TestCase):
         prob.root.ln_solver = ScipyGMRES()
 
         prob.setup(check=False)
+        prob.print_all_convergence()
         prob['comp.z'] = -4.93191510182
 
         prob.run()
 
         assert_rel_error(self, prob['comp.z'], -4.93191510182, .00001)
-        self.assertLessEqual(prob.root.nl_solver.iter_count, 10,
+        self.assertLessEqual(prob.root.nl_solver.iter_count, 5,
                              msg='Should get there pretty quick because of utol.')
 
 
