@@ -13,6 +13,7 @@ Implemented in OpenMDAO, Aug 2016, Kenneth T. Moore
 
 from __future__ import print_function
 from copy import deepcopy
+from itertools import chain
 from time import time
 
 from six import iteritems
@@ -159,11 +160,16 @@ class AMIEGO_driver(Driver):
             minlp._desvars[name] = self._desvars[name]
 
         # It should be perfectly okay to 'share' obj and con with the
-        # sub-optimizers.
-        cont_opt._cons = self._cons
-        cont_opt._objs = self._objs
+        # MINLP optimizers.
         minlp._cons = self._cons
         minlp._objs = self._objs
+
+        # Continuous optimizer is allowed to have some of its own
+        # constraints, which have already been specified by user.
+        #cont_opt._cons = self._cons
+        cont_opt._objs = self._objs
+        for name, con in iteritems(self._cons):
+            cont_opt._cons[name] = con
 
     def set_root(self, pathname, root):
         """ Sets the root Group of this driver.
@@ -176,6 +182,22 @@ class AMIEGO_driver(Driver):
         super(AMIEGO_driver, self).set_root(pathname, root)
         self.cont_opt.set_root(pathname, root)
         self.minlp.set_root(pathname, root)
+
+    def outputs_of_interest(self):
+        """ Note: We need to also calculate relevance for constraints in the
+        cont_opt slot.
+
+        Returns
+        -------
+        list of tuples of str
+            The list of constraints and objectives, organized into tuples
+            according to previously defined VOI groups.
+        """
+        all_cons = self._cons.copy()
+        for name, con in iteritems(self.cont_opt._cons):
+            all_cons[name] = con
+
+        return self._of_interest(list(chain(self._objs, all_cons)))
 
     def get_req_procs(self):
         """
@@ -318,6 +340,10 @@ class AMIEGO_driver(Driver):
                 # Restore initial condition for continuous vars.
                 for var, val in iteritems(xc_cache):
                     cont_opt.set_desvar(var, val)
+
+                # If we are doing any prescreening, we need to attach the
+                # list of integer desvars to the cont_opt
+                cont_opt.trip = x_i[i_run]
 
                 # Optimize continuous variables
                 cont_opt.run(problem)
