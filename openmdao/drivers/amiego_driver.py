@@ -291,14 +291,18 @@ class AMIEGO_driver(Driver):
                 xx_i = np.empty((self.i_size, ))
                 # xx_i_hat = np.empty((self.i_size, ))
                 for var in self.i_dvs:
-                    lower = self._desvars[var]['lower']
-                    upper = self._desvars[var]['upper']
+                    #lower = self._desvars[var]['lower']
+                    #upper = self._desvars[var]['upper']
                     i, j = self.i_idx[var]
 
                     #Samples should be bounded in an unit hypercube [0,1]
                     x_i_0 = self.sampling[var][i_train, :]
 
-                    xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower))
+                    # Now, we are no longer normalizing the integer inputs. So
+                    # the integer design variables are in the original design
+                    # space.
+                    #xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower))
+                    xx_i[i:j] = x_i_0
                     # xx_i_hat[i:j] = (xx_i[i:j] - lower)/(upper - lower)
                 x_i.append(xx_i)
                 # x_i_hat.append(xx_i_hat)
