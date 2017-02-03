@@ -280,7 +280,7 @@ class AMIEGO_driver(Driver):
 
         # Prepare to optimize the initial sampling points
         else:
-            best_obj = 1.0e99
+            best_obj = 1000.0
             pre_opt = False
             n_train = self.sampling[self.i_dvs[0]].shape[0]
             c_start = 0
@@ -336,6 +336,10 @@ class AMIEGO_driver(Driver):
 
             for i_run in range(c_start, c_end):
 
+                if disp:
+                    print('Optimizing for the given integer/discrete type design variables.',
+                          x_i[i_run])
+
                 # Set Integer design variables
                 for var in self.i_dvs:
                     i, j = self.i_idx[var]
@@ -352,6 +356,8 @@ class AMIEGO_driver(Driver):
                 # Optimize continuous variables
                 cont_opt.run(problem)
                 eflag_conopt = cont_opt.success
+                if disp:
+                    print("Exit Flag:", eflag_conopt)
 
                 if not eflag_conopt:
                     self.minlp.bad_samples.append(x_i[i_run])
