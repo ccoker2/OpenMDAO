@@ -13,6 +13,7 @@ Implemented in OpenMDAO, Aug 2016, Kenneth T. Moore
 
 from __future__ import print_function
 from copy import deepcopy
+from itertools import chain
 from time import time
 
 from six import iteritems
@@ -159,11 +160,16 @@ class AMIEGO_driver(Driver):
             minlp._desvars[name] = self._desvars[name]
 
         # It should be perfectly okay to 'share' obj and con with the
-        # sub-optimizers.
-        cont_opt._cons = self._cons
-        cont_opt._objs = self._objs
+        # MINLP optimizers.
         minlp._cons = self._cons
         minlp._objs = self._objs
+
+        # Continuous optimizer is allowed to have some of its own
+        # constraints, which have already been specified by user.
+        #cont_opt._cons = self._cons
+        cont_opt._objs = self._objs
+        for name, con in iteritems(self._cons):
+            cont_opt._cons[name] = con
 
     def set_root(self, pathname, root):
         """ Sets the root Group of this driver.
@@ -176,6 +182,22 @@ class AMIEGO_driver(Driver):
         super(AMIEGO_driver, self).set_root(pathname, root)
         self.cont_opt.set_root(pathname, root)
         self.minlp.set_root(pathname, root)
+
+    def outputs_of_interest(self):
+        """ Note: We need to also calculate relevance for constraints in the
+        cont_opt slot.
+
+        Returns
+        -------
+        list of tuples of str
+            The list of constraints and objectives, organized into tuples
+            according to previously defined VOI groups.
+        """
+        all_cons = self._cons.copy()
+        for name, con in iteritems(self.cont_opt._cons):
+            all_cons[name] = con
+
+        return self._of_interest(list(chain(self._objs, all_cons)))
 
     def get_req_procs(self):
         """
@@ -258,8 +280,8 @@ class AMIEGO_driver(Driver):
 
         # Prepare to optimize the initial sampling points
         else:
-            best_obj = 1.0e99
-            pre_opt = False
+            best_obj = 1000.0
+            # pre_opt = False
             n_train = self.sampling[self.i_dvs[0]].shape[0]
             c_start = 0
             c_end = n_train
@@ -269,14 +291,18 @@ class AMIEGO_driver(Driver):
                 xx_i = np.empty((self.i_size, ))
                 # xx_i_hat = np.empty((self.i_size, ))
                 for var in self.i_dvs:
-                    lower = self._desvars[var]['lower']
-                    upper = self._desvars[var]['upper']
+                    #lower = self._desvars[var]['lower']
+                    #upper = self._desvars[var]['upper']
                     i, j = self.i_idx[var]
 
                     #Samples should be bounded in an unit hypercube [0,1]
                     x_i_0 = self.sampling[var][i_train, :]
-                    del_fac = 0.0 #TODO This is the deafult. Set is to 2.0/3.0 for the des-alloc problem.
-                    xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower-del_fac))
+
+                    # Now, we are no longer normalizing the integer inputs. So
+                    # the integer design variables are in the original design
+                    # space.
+                    #xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower))
+                    xx_i[i:j] = x_i_0
                     # xx_i_hat[i:j] = (xx_i[i:j] - lower)/(upper - lower)
                 x_i.append(xx_i)
                 # x_i_hat.append(xx_i_hat)
@@ -319,6 +345,10 @@ class AMIEGO_driver(Driver):
                 # Restore initial condition for continuous vars.
                 for var, val in iteritems(xc_cache):
                     cont_opt.set_desvar(var, val)
+
+                # If we are doing any prescreening, we need to attach the
+                # list of integer desvars to the cont_opt
+                cont_opt.trip = x_i[i_run]
 
                 # Optimize continuous variables
                 cont_opt.run(problem)
@@ -502,7 +532,7 @@ class AMIEGO_driver(Driver):
                     elif tot_newpt_added >= max_pt_lim:
                         print("Maximum allowed sampling limit reached! Terminating algorithm.")
 
-            pre_opt = False
+            # pre_opt = False
 
         # Pull optimal parameters back into framework and re-run, so that
         # framework is left in the right final state
