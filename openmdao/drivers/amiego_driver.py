@@ -252,7 +252,6 @@ class AMIEGO_driver(Driver):
 
         # Start with pre-optimized samples
         if self.obj_sampling:
-            pre_opt = True
             n_train = len(self.sampling[self.i_dvs[0]])
             c_start = c_end = n_train
 
@@ -456,7 +455,7 @@ class AMIEGO_driver(Driver):
                 print("The best solution so far: yopt = %0.4f" % best_obj)
 
             tot_newpt_added += c_end - c_start
-            if pre_opt or tot_newpt_added != tot_pt_prev:
+            if tot_newpt_added != tot_pt_prev:
 
                 minlp.obj_surrogate = obj_surrogate
                 minlp.con_surrogate = con_surrogate
@@ -521,7 +520,7 @@ class AMIEGO_driver(Driver):
             # else:
             #     term = np.max(np.array([np.abs(ei_tol_rel*best_obj), ei_tol_abs]))
             term  = np.abs(ei_tol_rel*best_obj_norm)
-            if (not pre_opt and ei_max <= term) or ec2 == 1 or tot_newpt_added >= max_pt_lim:
+            if (ei_max <= term) or ec2 == 1 or tot_newpt_added >= max_pt_lim:
                 terminate = True
                 if disp:
                     if ei_max <= term:
@@ -530,8 +529,6 @@ class AMIEGO_driver(Driver):
                         print("No new point found that improves the surrogate. Terminating algorithm.")
                     elif tot_newpt_added >= max_pt_lim:
                         print("Maximum allowed sampling limit reached! Terminating algorithm.")
-
-            # pre_opt = False
 
         # Pull optimal parameters back into framework and re-run, so that
         # framework is left in the right final state
