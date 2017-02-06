@@ -195,6 +195,11 @@ class KrigingSurrogate(SurrogateModel):
         #                          comm, allgather=True)
 
 
+        # Print the traceback if it fails
+        for result in results:
+            if not result[0]:
+                print(result[1])
+
         thetas = [item[0][0] for item in results]
         fval = [item[0][1] for item in results]
 
