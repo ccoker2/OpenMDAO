@@ -1,10 +1,8 @@
 """ Driver for AMIEGO (A Mixed Integer Efficient Global Optimization).
-
 This driver is based on the EGO-Like Framework (EGOLF) for the simultaneous
 design-mission-allocation optimization problem. Handles
 mixed-integer/discrete type design variables in a computationally efficient
 manner and finds a near-global solution to the above MINLP/MDNLP problem.
-
 Developed by Satadru Roy
 Purdue University, West Lafayette, IN
 July 2016
@@ -37,10 +35,8 @@ class AMIEGO_driver(Driver):
     efficient manner and finds a near-global solution to the above
     MINLP/MDNLP problem. The continuous optimization is handled by the
     optimizer slotted in self.cont_opt.
-
     AMIEGO_driver supports the following:
         integer_design_vars
-
     Options
     -------
     options['ei_tol_rel'] :  0.001
@@ -50,7 +46,6 @@ class AMIEGO_driver(Driver):
     options['max_infill_points'] : 10
         Ratio of maximum number of additional points to number of initial
         points.
-
     """
 
     def __init__(self):
@@ -173,7 +168,6 @@ class AMIEGO_driver(Driver):
 
     def set_root(self, pathname, root):
         """ Sets the root Group of this driver.
-
         Args
         ----
         root : Group
@@ -186,7 +180,6 @@ class AMIEGO_driver(Driver):
     def outputs_of_interest(self):
         """ Note: We need to also calculate relevance for constraints in the
         cont_opt slot.
-
         Returns
         -------
         list of tuples of str
@@ -211,7 +204,6 @@ class AMIEGO_driver(Driver):
 
     def run(self, problem):
         """Execute the AMIEGO driver.
-
         Args
         ----
         problem : `Problem`
@@ -252,6 +244,7 @@ class AMIEGO_driver(Driver):
 
         # Start with pre-optimized samples
         if self.obj_sampling:
+            pre_opt = True
             n_train = len(self.sampling[self.i_dvs[0]])
             c_start = c_end = n_train
 
@@ -281,7 +274,6 @@ class AMIEGO_driver(Driver):
         else:
             best_obj = 1000.0
             pre_opt = False
-
             n_train = self.sampling[self.i_dvs[0]].shape[0]
             c_start = 0
             c_end = n_train
@@ -369,6 +361,7 @@ class AMIEGO_driver(Driver):
                 obj.append(current_obj)
                 for name, value in iteritems(self.get_constraints()):
                     cons[name].append(value.copy())
+
                 # If best solution, save it
                 if eflag_conopt and current_obj < best_obj:
                     best_obj = current_obj
@@ -387,7 +380,7 @@ class AMIEGO_driver(Driver):
             if disp:
                 print('Elapsed Time:', time() - t0)
                 print("======================ContinuousOptimization-End=======================================")
-            # exit()
+                t0 = time()
 
             #------------------------------------------------------------------
             # Step 3: Build the surrogate models
@@ -395,7 +388,6 @@ class AMIEGO_driver(Driver):
             obj_surrogate = self.surrogate()
             obj_surrogate.comm = problem.root.comm
             obj_surrogate.use_snopt = True
-            print(x_i)
             obj_surrogate.train(x_i, obj, KPLS_status=True)
 
             obj_surrogate.y = obj
@@ -436,6 +428,7 @@ class AMIEGO_driver(Driver):
                         val_idx = val[:, j:j+1]
 
                     con_surr.train(x_i, val_idx, True)
+
                     con_surr.y = val_idx
                     con_surr._name = name
                     con_surr.lb_org = xI_lb
@@ -458,7 +451,7 @@ class AMIEGO_driver(Driver):
                 print("The best solution so far: yopt = %0.4f" % best_obj)
 
             tot_newpt_added += c_end - c_start
-            if tot_newpt_added != tot_pt_prev:
+            if pre_opt or tot_newpt_added != tot_pt_prev:
 
                 minlp.obj_surrogate = obj_surrogate
                 minlp.con_surrogate = con_surrogate
@@ -523,7 +516,7 @@ class AMIEGO_driver(Driver):
             # else:
             #     term = np.max(np.array([np.abs(ei_tol_rel*best_obj), ei_tol_abs]))
             term  = np.abs(ei_tol_rel*best_obj_norm)
-            if (ei_max <= term) or ec2 == 1 or tot_newpt_added >= max_pt_lim:
+            if (not pre_opt and ei_max <= term) or ec2 == 1 or tot_newpt_added >= max_pt_lim:
                 terminate = True
                 if disp:
                     if ei_max <= term:

@@ -66,7 +66,6 @@ class KrigingSurrogate(SurrogateModel):
     """Surrogate Modeling method based on the simple Kriging interpolation.
     Predictions are returned as a tuple of mean and RMSE. Based on Gaussian Processes
     for Machine Learning (GPML) by Rasmussen and Williams. (see also: scikit-learn).
-
     Args
     ----
     nugget : double or ndarray, optional
@@ -110,15 +109,12 @@ class KrigingSurrogate(SurrogateModel):
     def train(self, x, y, KPLS_status=False):
         """
         Train the surrogate model with the given set of inputs and outputs.
-
         Args
         ----
         x : array-like
             Training input locations
-
         y : array-like
             Model responses at given inputs.
-
         KPLS_status : Boolean
             False when KPLS is not added to Kriging (default)
             True Adds KPLS method to Kriging to reduce the number of hyper-parameters
@@ -221,7 +217,6 @@ class KrigingSurrogate(SurrogateModel):
         """ Optimization to solve for hyperparameters. This has been
         parallelized so that the best value can be found from a set of
         optimization starting points.
-
         Args
         ----
         point: list
@@ -284,7 +279,6 @@ class KrigingSurrogate(SurrogateModel):
     def _calculate_reduced_likelihood_params(self, thetas=None):
         """
         Calculates a quantity with the same maximum location as the log-likelihood for a given theta.
-
         Args
         ----
         thetas : ndarray, optional
@@ -341,7 +335,6 @@ class KrigingSurrogate(SurrogateModel):
         """
         Calculates a predicted value of the response based on the current
         trained model for the supplied list of inputs.
-
         Args
         ----
         x : array-like
@@ -388,7 +381,6 @@ class KrigingSurrogate(SurrogateModel):
     def linearize(self, x):
         """
         Calculates the jacobian of the Kriging surface at the requested point.
-
         Args
         ----
         x : array-like
