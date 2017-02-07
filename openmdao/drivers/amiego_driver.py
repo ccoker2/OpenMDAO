@@ -281,7 +281,8 @@ class AMIEGO_driver(Driver):
         # Prepare to optimize the initial sampling points
         else:
             best_obj = 1000.0
-            # pre_opt = False
+
+            pre_opt = False
             n_train = self.sampling[self.i_dvs[0]].shape[0]
             c_start = 0
             c_end = n_train
@@ -335,8 +336,11 @@ class AMIEGO_driver(Driver):
                 t0 = time()
 
             for i_run in range(c_start, c_end):
+
                 if disp:
-                    print("Optimizing for the given integer/discrete type design variables:", x_i[i_run])
+                    print('Optimizing for the given integer/discrete type design variables.',
+                          x_i[i_run])
+
                 # Set Integer design variables
                 for var in self.i_dvs:
                     i, j = self.i_idx[var]
@@ -354,9 +358,7 @@ class AMIEGO_driver(Driver):
                 cont_opt.run(problem)
                 eflag_conopt = cont_opt.success
                 if disp:
-                    print("Exit flag: ",eflag_conopt)
-                if not eflag_conopt:
-                    self.minlp.bad_samples.append(x_i[i_run])
+                    print("Exit Flag:", eflag_conopt)
 
                 if not eflag_conopt:
                     self.minlp.bad_samples.append(x_i[i_run])
@@ -532,7 +534,7 @@ class AMIEGO_driver(Driver):
                     elif tot_newpt_added >= max_pt_lim:
                         print("Maximum allowed sampling limit reached! Terminating algorithm.")
 
-            # pre_opt = False
+            pre_opt = False
 
         # Pull optimal parameters back into framework and re-run, so that
         # framework is left in the right final state
