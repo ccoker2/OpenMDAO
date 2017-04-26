@@ -692,9 +692,9 @@ class Branch_and_Bound(Driver):
                                                              con_surrogate[mm],
                                                              gSSqr=-sU_g,
                                                              g_hat=yL_g)
-                                    cub = np.max(con_surrogate[mm].Y)
-                                    clb = np.min(con_surrogate[mm].Y)
-                                    EV[mm] = (EV[mm] - clb)/(cub - clb)
+                                    # cub = np.max(con_surrogate[mm].Y)
+                                    # clb = np.min(con_surrogate[mm].Y)
+                                    # EV[mm] = (EV[mm] - clb)/(cub - clb)
                                 else:
                                     S4_fail = True
                                     break
@@ -816,10 +816,10 @@ class Branch_and_Bound(Driver):
                 for mm in range(M):
                     EV[mm] = calc_conEV_norm(xval, con_surrogate[mm])
 
-                    # Normalize EV
-                    cub = np.max(con_surrogate[mm].Y)
-                    clb = np.min(con_surrogate[mm].Y)
-                    EV[mm] = (EV[mm] - clb)/(cub - clb)
+                    # # Normalize EV
+                    # cub = np.max(con_surrogate[mm].Y)
+                    # clb = np.min(con_surrogate[mm].Y)
+                    # EV[mm] = (EV[mm] - clb)/(cub - clb)
 
                 conNegEI = NegEI/(1.0 + np.sum(EV/M))
             else:
