@@ -1,8 +1,10 @@
 """ Driver for AMIEGO (A Mixed Integer Efficient Global Optimization).
+
 This driver is based on the EGO-Like Framework (EGOLF) for the simultaneous
 design-mission-allocation optimization problem. Handles
 mixed-integer/discrete type design variables in a computationally efficient
 manner and finds a near-global solution to the above MINLP/MDNLP problem.
+
 Developed by Satadru Roy
 Purdue University, West Lafayette, IN
 July 2016
@@ -35,8 +37,10 @@ class AMIEGO_driver(Driver):
     efficient manner and finds a near-global solution to the above
     MINLP/MDNLP problem. The continuous optimization is handled by the
     optimizer slotted in self.cont_opt.
+
     AMIEGO_driver supports the following:
         integer_design_vars
+
     Options
     -------
     options['ei_tol_rel'] :  0.001
@@ -168,6 +172,7 @@ class AMIEGO_driver(Driver):
 
     def set_root(self, pathname, root):
         """ Sets the root Group of this driver.
+
         Args
         ----
         root : Group
@@ -180,6 +185,7 @@ class AMIEGO_driver(Driver):
     def outputs_of_interest(self):
         """ Note: We need to also calculate relevance for constraints in the
         cont_opt slot.
+
         Returns
         -------
         list of tuples of str
@@ -204,6 +210,7 @@ class AMIEGO_driver(Driver):
 
     def run(self, problem):
         """Execute the AMIEGO driver.
+
         Args
         ----
         problem : `Problem`

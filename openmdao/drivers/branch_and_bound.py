@@ -1,11 +1,13 @@
 """ Class definition for the Branch_and_Bound driver. This driver can be run
 standalone or plugged into the AMIEGO driver.
+
 This is the branch and bound algorithm that maximizes the constrained
 expected improvement function and returns an integer infill point. The
 algorithm uses the relaxation techniques proposed by Jones et.al. on their
 paper on EGO,1998. This enables the algorithm to use any gradient-based
 approach to obtain a global solution. Also, to satisfy the integer
 constraints, a new branching scheme has been implemented.
+
 Developed by Satadru Roy
 School of Aeronautics & Astronautics
 Purdue University, West Lafayette, IN 47906
@@ -123,6 +125,7 @@ def snopt_opt2(objfun, desvar, lb, ub, title=None, options=None,
 class Branch_and_Bound(Driver):
     """ Class definition for the Branch_and_Bound driver. This driver can be run
     standalone or plugged into the AMIEGO driver.
+
     This is the branch and bound algorithm that maximizes the constrained
     expected improvement function and returns an integer infill point. The
     algorithm uses the relaxation techniques proposed by Jones et.al. on
@@ -256,6 +259,7 @@ class Branch_and_Bound(Driver):
 
     def run(self, problem):
         """Execute the Branch_and_Bound method.
+
         Args
         ----
         problem : `Problem`
@@ -1185,12 +1189,14 @@ class Branch_and_Bound(Driver):
 def update_active_set(active_set, ubd):
     """ Remove variables from the active set data structure if their current
     upper bound exceeds the given value.
+
     Args
     ----
     active_set : list of lists of floats
         Active set data structure of form [[NodeNumber, lb, ub, LBD, UBD], [], ..]
     ubd : float
         Maximum for bounds test.
+
     Returns
     -------
     new active_set
@@ -1232,7 +1238,9 @@ def interval_analysis(lb_x, ub_x, surrogate):
     """ The module predicts the lower and upper bound of the artificial
     variable 'r' from the bounds of the design variable x r is related to x
     by the following equation:
+
     r_i = exp(-sum(theta_h*(x_h - x_h_i)^2))
+
     """
 
     X = surrogate.X

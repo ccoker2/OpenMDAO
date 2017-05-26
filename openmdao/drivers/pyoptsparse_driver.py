@@ -1,5 +1,6 @@
 """
 OpenMDAO Wrapper for pyoptsparse.
+
 pyoptsparse is based on pyOpt, which is an object-oriented framework for
 formulating and solving nonlinear constrained optimization problems, with
 additional MPI capability.
@@ -55,9 +56,13 @@ class pyOptSparseDriver(Driver):
     Note that some of these are not open source and therefore not included
     in the pyoptsparse source code.
     pyOptSparseDriver supports the following:
+
         equality_constraints
+
         inequality_constraints
+
         two_sided_constraints
+
     Options
     -------
     options['optimizer'] :  str('SLSQP')
@@ -129,6 +134,7 @@ class pyOptSparseDriver(Driver):
     def run(self, problem):
         """pyOpt execution. Note that pyOpt controls the execution, and the
         individual optimizers (i.e., SNOPT) control the iteration.
+
         Args
         ----
         problem : `Problem`
@@ -340,6 +346,7 @@ class pyOptSparseDriver(Driver):
                       full_param_conns, rels):
         """ Build up the data structures that define a sparse Jacobian
         matrix. Called separately on each nonlinear constraint.
+
         Args
         ----
         name : str
@@ -355,7 +362,8 @@ class pyOptSparseDriver(Driver):
         full_param_conns : dict
             Parameter full connection info.
         rels : set
-            Set of relevant nodes for this connstraint.
+            Set of relevant nodes for this constraint.
+
         Returns
         -------
         pyoptsparse coo matrix or None
@@ -417,10 +425,12 @@ class pyOptSparseDriver(Driver):
         """ Function that evaluates and returns the objective function and
         constraints. This function is passed to pyOpt's Optimization object
         and is called from its optimizers.
+
         Args
         ----
         dv_dict : dict
             Dictionary of design variable values.
+
         Returns
         -------
         func_dict : dict
@@ -482,12 +492,14 @@ class pyOptSparseDriver(Driver):
         """ Function that evaluates and returns the gradient of the objective
         function and constraints. This function is passed to pyOpt's
         Optimization object and is called from its optimizers.
+
         Args
         ----
         dv_dict : dict
             Dictionary of design variable values.
         func_dict : dict
             Dictionary of all functional variables evaluated at design point.
+
         Returns
         -------
         sens_dict : dict
