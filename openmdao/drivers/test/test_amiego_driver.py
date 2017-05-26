@@ -34,7 +34,7 @@ class TestAMIEGOdriver(unittest.TestCase):
 
         prob.driver.add_objective('f')
 
-        prob.driver.sampling = {'xI' : np.array([[0.0], [0.33], [0.66]])}
+        prob.driver.sampling = {'xI' : np.array([[-5.0], [0.0], [5.0]])}
 
         prob.setup(check=False)
         prob.run()
@@ -73,11 +73,11 @@ class TestAMIEGOdriver(unittest.TestCase):
         prob.driver.add_constraint('stress', upper=1.0)
 
         npt = 5
-        samples = np.array([[1.0, 0.25, 0.75],
-                            [0.0, 0.75, 0.0],
-                            [0.75, 0.0, 0.25],
-                            [0.75, 1.0, 0.49],
-                            [0.25, 0.49, 1.0]])
+        samples = np.array([[4, 2, 3],
+                            [1, 3, 1],
+                            [3, 1, 2],
+                            [3, 4, 2],
+                            [1, 1, 4]])
 
         prob.driver.sampling = {'mat1' : samples[:, 0].reshape((npt, 1)),
                                 'mat2' : samples[:, 1].reshape((npt, 1)),
@@ -114,11 +114,11 @@ class TestAMIEGOdriver(unittest.TestCase):
         prob.driver.add_constraint('stress', upper=1.0)
 
         npt = 5
-        samples = np.array([[1.0, 0.25, 0.75],
-                            [0.0, 0.75, 0.0],
-                            [0.75, 0.0, 0.25],
-                            [0.75, 1.0, 0.5],
-                            [0.25, 0.5, 1.0]])
+        samples = np.array([[4, 2, 3],
+                            [1, 3, 1],
+                            [3, 1, 2],
+                            [3, 4, 2],
+                            [1, 1, 4]])
         prob.driver.sampling = {'mat' : samples}
 
         prob.setup(check=False)
@@ -156,7 +156,7 @@ class TestAMIEGOdriver(unittest.TestCase):
                    np.array([ 1.,  3.,  1.]),
                    np.array([ 3.,  1.,  2.]),
                    np.array([ 3.,  4.,  2.]),
-                   np.array([ 2.,  2.,  4.])]
+                   np.array([ 1.,  1.,  4.])]
 
         obj_samples = [np.array([ 20.33476318]),
                        np.array([ 15.70506904]),

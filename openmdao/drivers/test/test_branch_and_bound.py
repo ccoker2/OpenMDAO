@@ -28,7 +28,7 @@ class TestBranchAndBounddriver(unittest.TestCase):
         prob.driver.add_desvar('xI', lower=-5, upper=10)
         prob.driver.add_objective('f')
 
-        npt = 15
+        npt = 7
         prob.driver.sampling = {'xI' : np.linspace(0.0, 1.0, num=npt).reshape(npt, 1)}
 
         prob.setup(check=False)

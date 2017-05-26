@@ -53,11 +53,11 @@ class TestAMIEGOdriver(MPITestCase):
         prob.driver.add_constraint('stress', upper=1.0)
 
         npt = 5
-        samples = np.array([[1.0, 0.25, 0.75],
-                            [0.0, 0.75, 0.0],
-                            [0.75, 0.0, 0.25],
-                            [0.75, 1.0, 0.49],
-                            [0.25, 0.49, 1.0]])
+        samples = np.array([[4, 2, 3],
+                            [1, 3, 1],
+                            [3, 1, 2],
+                            [3, 4, 2],
+                            [1, 1, 4]])
 
         prob.driver.sampling = {'mat1' : samples[:, 0].reshape((npt, 1)),
                                 'mat2' : samples[:, 1].reshape((npt, 1)),
